@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BenchZero - Optimized Staffing Allocation Engine</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons & Chart.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div class="brand-text">
+                    <h2>BenchZero</h2>
+                    <span class="badge badge-solver">CP-SAT Engine</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie"></i> Executive Overview
+                </button>
+                <button class="nav-item" data-tab="workbench">
+                    <i class="fa-solid fa-sliders"></i> Optimization Workbench
+                </button>
+                <button class="nav-item" data-tab="proposals">
+                    <i class="fa-solid fa-list-check"></i> Proposals & Decisions <span class="badge badge-count" id="pending-proposals-badge">0</span>
+                </button>
+                <button class="nav-item" data-tab="matrix">
+                    <i class="fa-solid fa-users-gear"></i> Resource & Slot Matrix
+                </button>
+                <button class="nav-item" data-tab="management">
+                    <i class="fa-solid fa-database"></i> Resource Data Setup
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="engine-status">
+                    <span class="status-dot online"></span>
+                    <span>OR-Tools CP-SAT 9.15</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Viewport -->
+        <main class="main-content">
+            <!-- Header Bar -->
+            <header class="top-header">
+                <div class="header-title">
+                    <h1 id="page-title">Executive Overview</h1>
+                    <p class="subtitle">Constraint-Satisfaction Workforce Staffing Engine</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-quick-run">
+                        <i class="fa-solid fa-bolt"></i> Run CP-SAT Solver
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <!-- TAB 1: EXECUTIVE OVERVIEW -->
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon icon-blue"><i class="fa-solid fa-users"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Total Workforce</span>
+                                <h3 id="stat-total-devs">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-amber"><i class="fa-solid fa-couch"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Bench Developers</span>
+                                <h3 id="stat-bench-devs">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-green"><i class="fa-solid fa-briefcase"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Staffed Slots</span>
+                                <h3 id="stat-staffed-slots">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-purple"><i class="fa-solid fa-star"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">High-Prio Fulfilled</span>
+                                <h3 id="stat-high-prio">0%</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Prominent Hero & Comparison Section -->
+                    <div class="card card-hero margin-bottom-lg">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-trophy"></i> CP-SAT Optimization Solver vs Baseline Matchers</h3>
+                            <span class="badge badge-emerald" id="dash-gain-badge">CP-SAT Optimal</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="algorithm-cards-grid">
+                                <!-- CP-SAT Card -->
+                                <div class="algo-card winner-card">
+                                    <div class="algo-badge">GOOGLE OR-TOOLS CP-SAT</div>
+                                    <h4 class="algo-title">Constraint Satisfaction</h4>
+                                    <div class="algo-score" id="dash-cpsat-score">0.0</div>
+                                    <div class="algo-details">
+                                        <div><span>Assigned:</span> <strong id="dash-cpsat-assigned">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-cpsat-bench">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-cpsat-runtime">0.0s</strong></div>
+                                    </div>
+                                </div>
+
+                                <!-- Naive Greedy Card -->
+                                <div class="algo-card">
+                                    <div class="algo-badge gray">NAIVE GREEDY MATCHING</div>
+                                    <h4 class="algo-title">Local Decision Matcher</h4>
+                                    <div class="algo-score" id="dash-greedy-score">0.0</div>
+                                    <div class="algo-details">
+                                        <div><span>Assigned:</span> <strong id="dash-greedy-assigned">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-greedy-bench">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-greedy-runtime">0.0s</strong></div>
+                                    </div>
+                                </div>
+
+                                <!-- SciPy Card -->
+                                <div class="algo-card">
+                                    <div class="algo-badge gray">SCIPY HUNGARIAN MATCHING</div>
+                                    <h4 class="algo-title">Linear Sum Assignment (1:1)</h4>
+                                    <div class="algo-score" id="dash-scipy-score">0.0</div>
+                                    <div class="algo-details">
+                                        <div><span>Assigned:</span> <strong id="dash-scipy-assigned">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-scipy-bench">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-scipy-runtime">0.0s</strong></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="chart-wrapper">
+                                <canvas id="dashBenchmarkChart" height="130"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 2: OPTIMIZATION WORKBENCH -->
+                <section id="tab-workbench" class="tab-pane">
+                    <div class="workbench-grid">
+                        <!-- Control Panel -->
+                        <div class="card config-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-sliders"></i> Solver Configuration</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="solver-config-form">
+                                    <div class="form-group">
+                                        <label for="input-objective">Optimization Objective</label>
+                                        <select id="input-objective" class="form-control">
+                                            <option value="balanced">Balanced (Skill + Priority + Bench)</option>
+                                            <option value="maximize_fit">Maximize Skill Fit Quality</option>
+                                            <option value="maximize_priority">Prioritize High-Priority Projects</option>
+                                            <option value="minimize_bench">Minimize Bench Time</option>
+                                            <option value="minimize_cost">Minimize Hourly Cost</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="input-time-limit">CP-SAT Max Time Limit (Seconds): <span id="time-limit-val">10</span>s</label>
+                                        <input type="range" id="input-time-limit" min="1" max="30" value="10" class="form-range">
+                                    </div>
+
+                                    <div class="form-group checkbox-group">
+                                        <label>
+                                            <input type="checkbox" id="check-comparison" checked> Run Benchmarking (CP-SAT vs. Greedy vs. SciPy)
+                                        </label>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-run-solver-wb">
+                                        <i class="fa-solid fa-play"></i> Execute Optimization Solver
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Comparison Results -->
+                        <div class="card results-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-trophy"></i> Detailed Solver Performance</h3>
+                                <div class="badge badge-emerald" id="badge-solver-diff">CP-SAT Optimal</div>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-wrapper">
+                                    <canvas id="benchmarkChart" height="150"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 3: PROPOSALS & DECISIONS -->
+                <section id="tab-proposals" class="tab-pane">
+                    <div class="proposals-header-card card">
+                        <div class="card-body flex-between">
+                            <div>
+                                <h3>Allocation Proposals</h3>
+                                <p>Human-in-the-loop review. Algorithm suggests; project manager confirms.</p>
+                            </div>
+                            <button class="btn btn-success" id="btn-bulk-accept">
+                                <i class="fa-solid fa-check-double"></i> Bulk Accept All Proposed
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="proposals-list-grid" id="proposals-container">
+                        <!-- Rendered dynamically -->
+                    </div>
+
+                    <div class="card margin-top-lg">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-file-contract"></i> Confirmed Allocations</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Developer</th>
+                                        <th>Project</th>
+                                        <th>Role Slot</th>
+                                        <th>Dates</th>
+                                        <th>Allocated Hours</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="confirmed-allocations-body">
+                                    <!-- Rendered dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 4: RESOURCE & SLOT MATRIX -->
+                <section id="tab-matrix" class="tab-pane">
+                    <div class="matrix-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-user-gear"></i> Developer Availability & Skill Matrix</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Developer</th>
+                                                <th>Title</th>
+                                                <th>Rate ($/hr)</th>
+                                                <th>Skills & Proficiency</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="matrix-developers-body">
+                                            <!-- Rendered dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-layer-group"></i> Project Slot Demand</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Project</th>
+                                                <th>Role</th>
+                                                <th>Priority</th>
+                                                <th>Required Skills</th>
+                                                <th>Headcount Needed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="matrix-slots-body">
+                                            <!-- Rendered dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 5: DATA MANAGEMENT -->
+                <section id="tab-management" class="tab-pane">
+                    <div class="management-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-user-plus"></i> Add New Developer</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="form-add-developer">
+                                    <div class="form-group">
+                                        <label>Full Name</label>
+                                        <input type="text" id="dev-name" class="form-control" placeholder="e.g. Sarah Connor" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email</label>
+                                        <input type="email" id="dev-email" class="form-control" placeholder="sarah@benchzero.io" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Job Title</label>
+                                        <input type="text" id="dev-title" class="form-control" placeholder="Senior Backend Engineer" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Hourly Cost ($)</label>
+                                        <input type="number" id="dev-cost" class="form-control" value="110" step="5" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block">Add Developer</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-square-plus"></i> Add Project Slot</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="form-add-slot">
+                                    <div class="form-group">
+                                        <label>Project</label>
+                                        <select id="slot-project-id" class="form-control" required></select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Role Title</label>
+                                        <input type="text" id="slot-role" class="form-control" placeholder="Lead Go Engineer" required>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group col">
+                                            <label>Priority (1-5)</label>
+                                            <input type="number" id="slot-priority" class="form-control" min="1" max="5" value="4" required>
+                                        </div>
+                                        <div class="form-group col">
+                                            <label>Headcount</label>
+                                            <input type="number" id="slot-headcount" class="form-control" min="1" value="1" required>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block">Add Slot</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    {% load static %}
+    <script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>

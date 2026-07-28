@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: benchzero_db
+    environment:
+      POSTGRES_DB: benchzero
+      POSTGRES_USER: benchzero_user
+      POSTGRES_PASSWORD: benchzero_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: benchzero_web
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_data &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=docker-benchzero-secret-key
+      - DEBUG=True
+      - DATABASE_URL=postgres://benchzero_user:benchzero_password@db:5432/benchzero
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
