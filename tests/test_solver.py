@@ -170,3 +170,81 @@ class TestOptimizationSolverEngine(TestCase):
         assert 'greedy' in comp
         assert 'scipy' in comp
         assert comp['cpsat']['total_score'] >= comp['greedy']['total_score']
+
+    def test_developer_leave_makes_dev_ineligible(self):
+        from staffing.models import DeveloperLeave
+        today = date.today()
+        leave = DeveloperLeave.objects.create(
+            developer=self.dev1,
+            start_date=today + timedelta(days=2),
+            end_date=today + timedelta(days=10),
+            reason="Vacation",
+            is_approved=True
+        )
+
+        assert is_developer_eligible(self.dev1, self.slot1, leaves=[leave]) is False
+
+        # Attempting direct allocation creation during leave raises ValidationError
+        alloc = Allocation(
+            developer=self.dev1,
+            project_slot=self.slot1,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+            allocated_hours=40,
+            status='confirmed'
+        )
+        with pytest.raises(ValidationError):
+            alloc.save()
+
+    def test_weekly_hours_capacity_validation(self):
+        today = date.today()
+        # Create slot A (20h/wk) and slot B (20h/wk)
+        slot_a = ProjectSlot.objects.create(
+            project=self.project, role_title="Dev A", start_date=today, end_date=today + timedelta(days=30), headcount_needed=1, weekly_hours_required=20
+        )
+        slot_b = ProjectSlot.objects.create(
+            project=self.project, role_title="Dev B", start_date=today, end_date=today + timedelta(days=30), headcount_needed=1, weekly_hours_required=20
+        )
+        slot_c = ProjectSlot.objects.create(
+            project=self.project, role_title="Dev C", start_date=today, end_date=today + timedelta(days=30), headcount_needed=1, weekly_hours_required=10
+        )
+
+        # 20h + 20h = 40h <= 40h max -> Allowed
+        alloc_a = Allocation.objects.create(
+            developer=self.dev1, project_slot=slot_a, start_date=today, end_date=today + timedelta(days=30), allocated_hours=20, status='confirmed'
+        )
+        alloc_b = Allocation.objects.create(
+            developer=self.dev1, project_slot=slot_b, start_date=today, end_date=today + timedelta(days=30), allocated_hours=20, status='confirmed'
+        )
+        assert alloc_a.pk and alloc_b.pk
+
+        # Attempting third allocation (10h, total 50h > 40h max) -> Raises ValidationError
+        alloc_c = Allocation(
+            developer=self.dev1, project_slot=slot_c, start_date=today, end_date=today + timedelta(days=30), allocated_hours=10, status='confirmed'
+        )
+        with pytest.raises(ValidationError):
+            alloc_c.save()
+
+    def test_stale_proposals_auto_expire_on_new_solver_run(self):
+        res1 = run_optimization_engine(objective='balanced', time_limit_seconds=2.0)
+        run1 = SolverRun.objects.get(id=res1['solver_run_id'])
+        prop1 = run1.proposals.first()
+        assert prop1.status == 'proposed'
+
+        # Trigger second solver run
+        res2 = run_optimization_engine(objective='balanced', time_limit_seconds=2.0)
+        prop1.refresh_from_db()
+        assert prop1.status == 'expired'
+
+    def test_clean_enforces_slot_headcount(self):
+        today = date.today()
+        # Headcount = 1
+        Allocation.objects.create(
+            developer=self.dev1, project_slot=self.slot1, start_date=today, end_date=today + timedelta(days=30), allocated_hours=40, status='confirmed'
+        )
+        # Attempt second allocation to same slot for dev2
+        alloc2 = Allocation(
+            developer=self.dev2, project_slot=self.slot1, start_date=today, end_date=today + timedelta(days=30), allocated_hours=40, status='confirmed'
+        )
+        with pytest.raises(ValidationError):
+            alloc2.save()

@@ -3,11 +3,14 @@ from ortools.sat.python import cp_model
 from .eligibility import is_developer_eligible, check_date_overlap
 from .fit_score import compute_fit_score
 
-def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_limit_seconds=10.0, existing_allocations=None):
+def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_limit_seconds=10.0, existing_allocations=None, leaves=None):
     """
     Solves the staffing allocation problem using Google OR-Tools CP-SAT Constraint Solver.
-    Guards against both internal slot overlaps AND previously confirmed database allocations.
+    Enforces linear weekly-hour capacity constraints, headcount limits, leaves, and existing allocations.
     """
+    # Server-side time limit capping (max 60 seconds)
+    time_limit_seconds = min(max(float(time_limit_seconds), 0.5), 60.0)
+
     model = cp_model.CpModel()
     assign = {}
     eligible_devs_by_slot = {s.id: [] for s in project_slots}
@@ -17,31 +20,55 @@ def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_l
     dev_dict = {d.id: d for d in developers}
     slot_dict = {s.id: s for s in project_slots}
 
-    # 1. Decision Variables & Hard Skill + Existing Allocation Overlap Filters
+    # Dynamic cost statistics
+    costs = [float(d.hourly_cost) for d in developers if d.hourly_cost is not None]
+    cost_stats = {'min': min(costs), 'max': max(costs)} if costs else None
+
+    # 1. Decision Variables & Hard Skill + Existing Allocation + Leave Filters
     for d in developers:
         for s in project_slots:
-            if is_developer_eligible(d, s, existing_allocations=existing_allocations):
+            if is_developer_eligible(d, s, existing_allocations=existing_allocations, leaves=leaves):
                 var = model.NewBoolVar(f"assign_d{d.id}_s{s.id}")
                 assign[(d.id, s.id)] = var
                 eligible_devs_by_slot[s.id].append(d.id)
                 eligible_slots_by_dev[d.id].append(s.id)
-                fit_scores[(d.id, s.id)] = compute_fit_score(d, s, objective)
+                fit_scores[(d.id, s.id)] = compute_fit_score(d, s, objective, cost_stats=cost_stats)
 
     num_constraints = 0
 
-    # 2. Overlap Constraint: A developer cannot be double-booked across overlapping slots
-    slot_list = list(project_slots)
-    for i in range(len(slot_list)):
-        s1 = slot_list[i]
-        for j in range(i + 1, len(slot_list)):
-            s2 = slot_list[j]
-            if check_date_overlap(s1.start_date, s1.end_date, s2.start_date, s2.end_date):
-                for d in developers:
-                    v1 = assign.get((d.id, s1.id))
-                    v2 = assign.get((d.id, s2.id))
-                    if v1 is not None and v2 is not None:
-                        model.Add(v1 + v2 <= 1)
-                        num_constraints += 1
+    # 2. Linear Weekly Hours Capacity Constraint per Developer across all timeline dates
+    all_dates = set()
+    for s in project_slots:
+        all_dates.add(s.start_date)
+        all_dates.add(s.end_date)
+
+    if existing_allocations:
+        for a in existing_allocations:
+            all_dates.add(a.start_date)
+            all_dates.add(a.end_date)
+
+    for d in developers:
+        dev_max_hours = getattr(d, 'max_weekly_hours', 40)
+        
+        # Existing confirmed allocation hours per date
+        d_allocs = [a for a in (existing_allocations or []) if a.developer_id == d.id and getattr(a, 'status', 'confirmed') == 'confirmed']
+
+        for date_pt in all_dates:
+            # Find candidate slots active on this date_pt
+            active_slots = [
+                s for s in eligible_slots_by_dev[d.id]
+                if check_date_overlap(slot_dict[s].start_date, slot_dict[s].end_date, date_pt, date_pt)
+            ]
+            if active_slots:
+                committed_hours = sum(
+                    getattr(a, 'allocated_hours', 40) for a in d_allocs
+                    if check_date_overlap(a.start_date, a.end_date, date_pt, date_pt)
+                )
+                avail_hours = max(0, dev_max_hours - committed_hours)
+
+                terms = [assign[(d.id, s_id)] * slot_dict[s_id].weekly_hours_required for s_id in active_slots]
+                model.Add(sum(terms) <= avail_hours)
+                num_constraints += 1
 
     # 3. Headcount Constraint: Each slot gets at most `headcount_needed` developers
     for s in project_slots:

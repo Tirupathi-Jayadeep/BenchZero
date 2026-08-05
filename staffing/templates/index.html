@@ -15,7 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=4.0">
 </head>
 <body>
     <div class="app-layout">
@@ -43,6 +43,9 @@
                 </button>
                 <button class="nav-item" data-tab="matrix">
                     <i class="fa-solid fa-users-gear"></i> Resource & Slot Matrix
+                </button>
+                <button class="nav-item" data-tab="roles-dashboard">
+                    <i class="fa-solid fa-user-tag"></i> Developer Roles Dashboard
                 </button>
                 <button class="nav-item" data-tab="management">
                     <i class="fa-solid fa-database"></i> Resource Data Setup
@@ -106,6 +109,100 @@
                         </div>
                     </div>
 
+                    <!-- Workforce & Project Staffing Status (what a PM actually opens the tool to check) -->
+                    <div class="status-panels-grid margin-bottom-lg">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-people-group"></i> Workforce Status</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-summary-row">
+                                    <div class="status-chip status-chip-emerald"><strong id="wf-allocated-count">0</strong><span>Allocated</span></div>
+                                    <div class="status-chip status-chip-amber"><strong id="wf-bench-count">0</strong><span>On Bench</span></div>
+                                    <div class="status-chip status-chip-purple"><strong id="wf-leave-count">0</strong><span>On Leave</span></div>
+                                </div>
+                                <div class="status-panel-body">
+                                    <div class="chart-wrapper chart-wrapper-sm">
+                                        <canvas id="workforceStatusChart" height="160"></canvas>
+                                    </div>
+                                    <div class="table-responsive status-list-scroll">
+                                        <table class="data-table">
+                                            <thead>
+                                                <tr><th>Developer</th><th>Status</th><th>Details</th></tr>
+                                            </thead>
+                                            <tbody id="workforce-status-body">
+                                                <!-- Rendered dynamically -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-diagram-project"></i> Project Staffing Status</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-summary-row">
+                                    <div class="status-chip status-chip-emerald"><strong id="proj-full-count">0</strong><span>Fully Staffed</span></div>
+                                    <div class="status-chip status-chip-amber"><strong id="proj-partial-count">0</strong><span>Partial</span></div>
+                                    <div class="status-chip status-chip-rose"><strong id="proj-unstaffed-count">0</strong><span>Unstaffed</span></div>
+                                </div>
+                                <div class="status-panel-body">
+                                    <div class="chart-wrapper chart-wrapper-sm">
+                                        <canvas id="projectStatusChart" height="160"></canvas>
+                                    </div>
+                                    <div class="table-responsive status-list-scroll">
+                                        <table class="data-table" id="project-status-table">
+                                            <thead>
+                                                <tr><th>Project</th><th>Client</th><th>Slots Filled</th><th>Status</th></tr>
+                                            </thead>
+                                            <tbody id="project-status-body">
+                                                <!-- Rendered dynamically -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <!-- Suggested Developers Drawer (per-project) -->
+                                    <div id="project-suggestions-drawer" class="project-suggestions-drawer" style="display: none;">
+                                        <div class="drawer-header">
+                                            <h4 id="drawer-project-title"><i class="fa-solid fa-user-tag"></i> Suggested Developers</h4>
+                                            <button class="btn btn-sm btn-outline" id="btn-close-drawer"><i class="fa-solid fa-xmark"></i></button>
+                                        </div>
+                                        <div id="drawer-suggestions-body" class="drawer-body">
+                                            <!-- Rendered dynamically -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Activity Log & Bench Trend (Phase 2) -->
+                    <div class="status-panels-grid margin-bottom-lg">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Activity Log</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="activity-feed-scroll" id="activity-log-feed">
+                                    <!-- Rendered dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-chart-line"></i> Bench % Trend (Last 30 Days)</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-wrapper chart-wrapper-md">
+                                    <canvas id="benchTrendChart" height="220"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Prominent Hero & Comparison Section -->
                     <div class="card card-hero margin-bottom-lg">
                         <div class="card-header">
@@ -153,6 +250,19 @@
 
                             <div class="chart-wrapper">
                                 <canvas id="dashBenchmarkChart" height="130"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PROJECT-WISE CANDIDATE ASSIGNMENT MAPPING -->
+                    <div class="card margin-bottom-lg">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-user-check"></i> Candidate Assignment Mapping (Suggested Staffing Plan)</h3>
+                            <button class="btn btn-sm btn-outline" onclick="app.switchTab('proposals')">Review All Proposals &rarr;</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="dash-candidate-assignments-grouped">
+                                <!-- Rendered dynamically as project-wise groups -->
                             </div>
                         </div>
                     </div>
@@ -244,12 +354,23 @@
                                         <th>Dates</th>
                                         <th>Allocated Hours</th>
                                         <th>Status</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="confirmed-allocations-body">
                                     <!-- Rendered dynamically -->
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- PROJECT TEAM ROSTERS (MULTI-DEVELOPER VIEW) -->
+                    <div class="margin-top-lg">
+                        <h3 style="font-family: var(--font-heading); margin-bottom: 16px;">
+                            <i class="fa-solid fa-people-group" style="color: var(--primary);"></i> Project Team Roster View (Grouped Staffing)
+                        </h3>
+                        <div id="project-teams-container">
+                            <!-- Rendered dynamically -->
                         </div>
                     </div>
                 </section>
@@ -307,12 +428,340 @@
                     </div>
                 </section>
 
+                <!-- TAB: DEVELOPER ROLES DASHBOARD -->
+                <section id="tab-roles-dashboard" class="tab-pane">
+                    <!-- KPI Metrics Bar -->
+                    <div class="stats-grid margin-bottom-lg">
+                        <div class="stat-card">
+                            <div class="stat-icon icon-purple"><i class="fa-solid fa-user-tag"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Total Developer Roles</span>
+                                <h3 id="role-stat-total-roles">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-green"><i class="fa-solid fa-user-check"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Working / Allocated</span>
+                                <h3 id="role-stat-working-devs">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-amber"><i class="fa-solid fa-couch"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">On Bench</span>
+                                <h3 id="role-stat-bench-devs">0</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon icon-blue"><i class="fa-solid fa-dollar-sign"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Avg Hourly Cost</span>
+                                <h3 id="role-stat-avg-cost">$0</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Role Distribution & Filter Controls Card -->
+                    <div class="card margin-bottom-lg">
+                        <div class="card-header flex-between flex-wrap">
+                            <div>
+                                <h3><i class="fa-solid fa-chart-column" style="color: var(--primary);"></i> Role Workforce Distribution & Analytics</h3>
+                                <p class="subtitle">Headcount breakdown by developer role showing active project allocations vs bench capacity</p>
+                            </div>
+                            <div class="filter-controls-group">
+                                <div class="search-input-wrap">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input type="text" id="role-search-input" class="form-control form-control-sm" placeholder="Filter by developer name or role...">
+                                </div>
+                                <select id="role-status-filter" class="form-control form-control-sm" style="width: 140px;">
+                                    <option value="all">All Statuses</option>
+                                    <option value="working">Working Only</option>
+                                    <option value="bench">Bench Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-wrapper chart-wrapper-md">
+                                <canvas id="roleDistributionChart" height="220"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Grouped Developer Roles Workforce View -->
+                    <div class="margin-bottom-lg">
+                        <div class="flex-between margin-bottom-md">
+                            <h3 style="font-family: var(--font-heading); font-size: 18px;">
+                                <i class="fa-solid fa-users-gear" style="color: var(--emerald);"></i> Employees Grouped by Developed Roles
+                            </h3>
+                            <span class="badge badge-solver" id="role-groups-count-badge">0 Role Categories</span>
+                        </div>
+
+                        <div id="role-workforce-container">
+                            <!-- Rendered dynamically by JavaScript -->
+                        </div>
+                    </div>
+                </section>
+
                 <!-- TAB 5: DATA MANAGEMENT -->
                 <section id="tab-management" class="tab-pane">
+                    <!-- BULK FILE UPLOAD SECTION -->
+                    <div class="card margin-bottom-lg">
+                        <div class="card-header flex-between">
+                            <div>
+                                <h3><i class="fa-solid fa-file-arrow-up" style="color: var(--primary);"></i> Bulk File Import (Employees & Projects)</h3>
+                                <p class="subtitle">Upload JSON or CSV files to quickly import developers, skills, projects, and role slot demands.</p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-sm btn-outline" id="btn-download-dev-sample">
+                                    <i class="fa-solid fa-download"></i> Sample Employee JSON/CSV
+                                </button>
+                                <button class="btn btn-sm btn-outline" id="btn-download-proj-sample">
+                                    <i class="fa-solid fa-download"></i> Sample Project JSON/CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="upload-cards-grid">
+                                <!-- Developer File Upload Card -->
+                                <div class="card" style="background: rgba(17, 24, 39, 0.6); border: 1px solid var(--border-color);">
+                                    <div class="card-header">
+                                        <h4 style="font-size: 15px; font-weight: 600;"><i class="fa-solid fa-users"></i> Import Employee Details</h4>
+                                        <span class="badge badge-emerald">JSON / CSV</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="dropzone-box" id="dev-dropzone">
+                                            <input type="file" id="dev-file-input" accept=".json,.csv" style="display: none;">
+                                            <div class="dropzone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                                            <div class="dropzone-text">Drag & drop Employee file here</div>
+                                            <div class="dropzone-subtext">or click to browse from device (.json, .csv)</div>
+                                            <div id="dev-file-name-display" class="dropzone-file-name" style="display: none;"></div>
+                                        </div>
+                                        <button class="btn btn-primary btn-block margin-top-md" id="btn-upload-devs" disabled>
+                                            <i class="fa-solid fa-upload"></i> Process Employee Upload
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Project File Upload Card -->
+                                <div class="card" style="background: rgba(17, 24, 39, 0.6); border: 1px solid var(--border-color);">
+                                    <div class="card-header">
+                                        <h4 style="font-size: 15px; font-weight: 600;"><i class="fa-solid fa-diagram-project"></i> Import Project & Slot Details</h4>
+                                        <span class="badge badge-emerald">JSON / CSV</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="dropzone-box" id="proj-dropzone">
+                                            <input type="file" id="proj-file-input" accept=".json,.csv" style="display: none;">
+                                            <div class="dropzone-icon"><i class="fa-solid fa-file-code"></i></div>
+                                            <div class="dropzone-text">Drag & drop Project file here</div>
+                                            <div class="dropzone-subtext">or click to browse from device (.json, .csv)</div>
+                                            <div id="proj-file-name-display" class="dropzone-file-name" style="display: none;"></div>
+                                        </div>
+                                        <button class="btn btn-primary btn-block margin-top-md" id="btn-upload-projects" disabled>
+                                            <i class="fa-solid fa-upload"></i> Process Project Upload
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Upload Feedback Result Box -->
+                            <div id="upload-results-box" class="results-alert-box" style="display: none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- FORMAT SPECIFICATIONS & SPECIFIC RULES CARD -->
+                    <div class="card margin-bottom-lg">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-book-bookmark" style="color: var(--amber);"></i> File Format Specifications & Data Validation Rules</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="rules-nav-tabs">
+                                <button class="rules-tab-btn active" data-ruletab="dev-rules"><i class="fa-solid fa-user-check"></i> Employee File Rules</button>
+                                <button class="rules-tab-btn" data-ruletab="proj-rules"><i class="fa-solid fa-folder-tree"></i> Project File Rules</button>
+                            </div>
+
+                            <!-- Pane 1: Employee Rules -->
+                            <div id="ruletab-dev-rules" class="rule-pane">
+                                <h4 style="margin-bottom: 10px; font-family: var(--font-heading);">Employee File Schema & Validation Rules</h4>
+                                <table class="rules-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Field / Column</th>
+                                            <th>Data Type</th>
+                                            <th>Status</th>
+                                            <th>Rules & Specific Constraints</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><code>name</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Full candidate/employee name. Cannot be empty.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>email</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Valid email format (e.g. <code>user@domain.com</code>). <strong>Must be unique</strong>. Existing emails update existing developer details.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>title</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Job title (e.g. <code>Staff AI Architect</code>). Default: <code>Senior Software Engineer</code>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>hourly_cost</code></td>
+                                            <td>Decimal</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Hourly billable/cost rate in USD (>= 0). Default: <code>75.00</code>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>max_weekly_hours</code></td>
+                                            <td>Integer</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Max available weekly hours capacity. <strong>Constraint: 1 to 80</strong> (Default: <code>40</code>).</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>skills</code></td>
+                                            <td>Array / String</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>
+                                                <strong>JSON:</strong> Array of objects <code>[{"name": "Python", "proficiency_level": 5}]</code><br>
+                                                <strong>CSV:</strong> Pipe-separated string <code>Python:5|Django:4|PostgreSQL:3</code><br>
+                                                <em>Note: Proficiency scale is <strong>1 (Novice) to 5 (Expert)</strong>. Missing skills are created automatically in DB.</em>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <h5 style="margin-top: 14px; margin-bottom: 6px; color: var(--text-muted);">Sample Employee JSON Structure:</h5>
+                                <pre class="code-preview-box">[
+  {
+    "name": "Jane Doe",
+    "email": "jane.doe@benchzero.io",
+    "title": "Lead Software Architect",
+    "hourly_cost": 140.00,
+    "max_weekly_hours": 40,
+    "skills": [
+      { "name": "Python", "proficiency_level": 5 },
+      { "name": "PyTorch", "proficiency_level": 4 }
+    ]
+  }
+]</pre>
+
+                                <h5 style="margin-top: 14px; margin-bottom: 6px; color: var(--text-muted);">Sample Employee CSV Format:</h5>
+                                <pre class="code-preview-box">name,email,title,hourly_cost,max_weekly_hours,skills
+Jane Doe,jane.doe@benchzero.io,Lead Architect,140,40,Python:5|PyTorch:4
+Bob Smith,bob.smith@benchzero.io,Fullstack Dev,110,40,React:4|TypeScript:4|Node.js:3</pre>
+                            </div>
+
+                            <!-- Pane 2: Project Rules -->
+                            <div id="ruletab-proj-rules" class="rule-pane" style="display: none;">
+                                <h4 style="margin-bottom: 10px; font-family: var(--font-heading);">Project & Role Slot Schema & Validation Rules</h4>
+                                <table class="rules-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Field / Column</th>
+                                            <th>Data Type</th>
+                                            <th>Status</th>
+                                            <th>Rules & Specific Constraints</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><code>name</code> / <code>project_name</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Title of the project (e.g. <code>Apex AI Platform</code>).</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>client</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Client or department name. Cannot be empty.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>priority</code></td>
+                                            <td>Integer</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Project strategic priority. <strong>Constraint: 1 (Low) to 5 (Critical)</strong>. Default: <code>3</code>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>budget</code></td>
+                                            <td>Decimal</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Total budget in USD (>= 0). Default: <code>50000.00</code>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>role_title</code></td>
+                                            <td>String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Title of the demand slot (e.g. <code>Senior Backend Engineer</code>).</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>start_date</code> & <code>end_date</code></td>
+                                            <td>Date String</td>
+                                            <td><span class="rule-badge req">Required</span></td>
+                                            <td>Format: <code>YYYY-MM-DD</code>. <strong>Constraint: <code>end_date</code> must be >= <code>start_date</code></strong>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>headcount_needed</code></td>
+                                            <td>Integer</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>Number of developers needed (>= 1). Default: <code>1</code>.</td>
+                                        </tr>
+                                        <tr>
+                                            <td><code>required_skills</code></td>
+                                            <td>Array / String</td>
+                                            <td><span class="rule-badge opt">Optional</span></td>
+                                            <td>
+                                                <strong>JSON:</strong> Array <code>[{"name": "Go", "min_proficiency": 4, "is_mandatory": true}]</code><br>
+                                                <strong>CSV:</strong> Pipe-separated <code>Go:4:mandatory|PostgreSQL:3:optional</code><br>
+                                                <em>Note: <code>min_proficiency</code> scale is 1 to 5. <code>is_mandatory</code> controls hard vs soft CP-SAT solver constraints.</em>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <h5 style="margin-top: 14px; margin-bottom: 6px; color: var(--text-muted);">Sample Project & Slot JSON Structure:</h5>
+                                <pre class="code-preview-box">[
+  {
+    "name": "Titan Cloud Infrastructure",
+    "client": "Titan Tech",
+    "priority": 5,
+    "budget": 200000.00,
+    "description": "Multi-region AWS cloud migration",
+    "slots": [
+      {
+        "role_title": "Lead Cloud Architect",
+        "start_date": "2026-08-01",
+        "end_date": "2026-11-01",
+        "priority": 5,
+        "headcount_needed": 2,
+        "weekly_hours_required": 40,
+        "required_skills": [
+          { "name": "AWS", "min_proficiency": 4, "is_mandatory": true },
+          { "name": "Kubernetes", "min_proficiency": 3, "is_mandatory": false }
+        ]
+      }
+    ]
+  }
+]</pre>
+
+                                <h5 style="margin-top: 14px; margin-bottom: 6px; color: var(--text-muted);">Sample Project CSV Format:</h5>
+                                <pre class="code-preview-box">project_name,client,priority,budget,description,role_title,start_date,end_date,slot_priority,headcount_needed,weekly_hours_required,required_skills
+Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,2026-11-01,5,2,40,AWS:4:mandatory|Kubernetes:3:optional</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MANUAL INDIVIDUAL ADDITION FORMS -->
                     <div class="management-grid">
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-user-plus"></i> Add New Developer</h3>
+                                <h3><i class="fa-solid fa-user-plus"></i> Add New Developer Manually</h3>
                             </div>
                             <div class="card-body">
                                 <form id="form-add-developer">
@@ -339,7 +788,7 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-square-plus"></i> Add Project Slot</h3>
+                                <h3><i class="fa-solid fa-square-plus"></i> Add Project Slot Manually</h3>
                             </div>
                             <div class="card-body">
                                 <form id="form-add-slot">
@@ -372,6 +821,6 @@
     </div>
 
     {% load static %}
-    <script src="{% static 'js/app.js' %}"></script>
+    <script src="{% static 'js/app.js' %}?v=4.0"></script>
 </body>
 </html>

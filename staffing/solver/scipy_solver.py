@@ -4,15 +4,18 @@ from scipy.optimize import linear_sum_assignment
 from .eligibility import is_developer_eligible, check_date_overlap
 from .fit_score import compute_fit_score
 
-def solve_scipy_staffing(developers, project_slots, objective='balanced', existing_allocations=None):
+def solve_scipy_staffing(developers, project_slots, objective='balanced', existing_allocations=None, leaves=None):
     """
     Solves staffing allocation using SciPy linear_sum_assignment (Hungarian Algorithm).
     Expands multi-headcount slots into individual 1:1 slot instances.
-    Respects existing confirmed database allocations.
+    Respects existing confirmed database allocations, leaves, and weekly hour limits.
     """
     start_time = time.time()
     
     dev_dict = {d.id: d for d in developers}
+
+    costs = [float(d.hourly_cost) for d in developers if d.hourly_cost is not None]
+    cost_stats = {'min': min(costs), 'max': max(costs)} if costs else None
 
     # Expand project slots into individual slot demand units
     expanded_slots = []
@@ -48,8 +51,8 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
     for i, dev in enumerate(developers):
         for j, slot_item in enumerate(expanded_slots):
             s = slot_item['slot_obj']
-            if is_developer_eligible(dev, s, existing_allocations=existing_allocations):
-                score = compute_fit_score(dev, s, objective)
+            if is_developer_eligible(dev, s, existing_allocations=existing_allocations, leaves=leaves):
+                score = compute_fit_score(dev, s, objective, cost_stats=cost_stats)
                 cost_matrix[i, j] = 1000.0 - score  # invert score to cost
                 fit_scores_grid[(dev.id, j)] = (score, s)
 
@@ -57,13 +60,17 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
 
     assignments = []
     total_score = 0.0
-    dev_assigned_ranges = {d.id: [] for d in developers}
+    dev_assigned_allocs = {d.id: [] for d in developers}
 
     # Pre-populate busy ranges from existing confirmed allocations
     if existing_allocations:
         for alloc in existing_allocations:
-            if alloc.status == 'confirmed' and alloc.developer_id in dev_assigned_ranges:
-                dev_assigned_ranges[alloc.developer_id].append((alloc.start_date, alloc.end_date))
+            if getattr(alloc, 'status', 'confirmed') == 'confirmed' and alloc.developer_id in dev_assigned_allocs:
+                dev_assigned_allocs[alloc.developer_id].append({
+                    'start_date': alloc.start_date,
+                    'end_date': alloc.end_date,
+                    'hours': getattr(alloc, 'allocated_hours', 40)
+                })
 
     for r, c in zip(row_ind, col_ind):
         if cost_matrix[r, c] < MAX_PENALTY / 2:
@@ -71,15 +78,34 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
             slot_item = expanded_slots[c]
             s = slot_item['slot_obj']
             
-            # Post-check date overlap constraint for 1:1 Hungarian matching
-            has_overlap = False
-            for start_d, end_d in dev_assigned_ranges[dev.id]:
-                if check_date_overlap(s.start_date, s.end_date, start_d, end_d):
-                    has_overlap = True
-                    break
+            # Post-check weekly capacity constraint for Hungarian matching
+            candidate_hours = s.weekly_hours_required
+            overlapping = [
+                a for a in dev_assigned_allocs[dev.id]
+                if check_date_overlap(s.start_date, s.end_date, a['start_date'], a['end_date'])
+            ]
 
-            if not has_overlap:
-                dev_assigned_ranges[dev.id].append((s.start_date, s.end_date))
+            exceeds_capacity = False
+            if overlapping:
+                boundary_dates = set([s.start_date, s.end_date])
+                for a in overlapping:
+                    boundary_dates.add(a['start_date'])
+                    boundary_dates.add(a['end_date'])
+                for date_pt in boundary_dates:
+                    day_hours = candidate_hours + sum(
+                        a['hours'] for a in overlapping
+                        if check_date_overlap(a['start_date'], a['end_date'], date_pt, date_pt)
+                    )
+                    if day_hours > dev.max_weekly_hours:
+                        exceeds_capacity = True
+                        break
+
+            if not exceeds_capacity:
+                dev_assigned_allocs[dev.id].append({
+                    'start_date': s.start_date,
+                    'end_date': s.end_date,
+                    'hours': candidate_hours
+                })
                 score, _ = fit_scores_grid[(dev.id, c)]
                 total_score += score
                 assignments.append({

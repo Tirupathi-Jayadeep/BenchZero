@@ -66,8 +66,9 @@ class TestStaffingAPI(TestCase):
         items = alloc_res.data['results'] if isinstance(alloc_res.data, dict) and 'results' in alloc_res.data else alloc_res.data
         assert len(items) >= 1
 
-    def test_accept_proposal_conflict_returns_409(self):
-        # Create an existing confirmed allocation for Dave
+    def test_accept_proposal_headcount_limit_returns_409(self):
+        dev2 = Developer.objects.create(name="Dev Two", email="dev2@test.com", hourly_cost=100)
+        # Allocate dev1 to slot (headcount = 1)
         Allocation.objects.create(
             developer=self.dev,
             project_slot=self.slot,
@@ -78,15 +79,119 @@ class TestStaffingAPI(TestCase):
         )
 
         run = SolverRun.objects.create(objective_used='balanced', status='completed')
+        proposal2 = AllocationProposal.objects.create(
+            solver_run=run,
+            developer=dev2,
+            project_slot=self.slot,
+            fit_score=80.0,
+            status='proposed'
+        )
+
+        res = self.client.post(f'/api/proposals/{proposal2.id}/accept/')
+        assert res.status_code == 409
+        proposal2.refresh_from_db()
+        assert proposal2.status == 'rejected'
+        assert "headcount limit" in proposal2.notes.lower()
+
+    def test_cancel_allocation_endpoint_and_audit_log(self):
+        alloc = Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date="2026-08-01",
+            end_date="2026-09-01",
+            allocated_hours=40,
+            status='confirmed'
+        )
+
+        res = self.client.post(f'/api/allocations/{alloc.id}/cancel/', {'reason': 'Project postponed'}, format='json')
+        assert res.status_code == 200
+        alloc.refresh_from_db()
+        assert alloc.status == 'cancelled'
+        assert alloc.audit_logs.filter(action='cancelled').exists()
+
+    def test_cannot_accept_expired_proposal(self):
+        run = SolverRun.objects.create(objective_used='balanced', status='completed')
         proposal = AllocationProposal.objects.create(
             solver_run=run,
             developer=self.dev,
             project_slot=self.slot,
             fit_score=85.0,
-            status='proposed'
+            status='expired'
         )
 
         res = self.client.post(f'/api/proposals/{proposal.id}/accept/')
-        assert res.status_code == 409
-        proposal.refresh_from_db()
-        assert proposal.status == 'rejected'
+        assert res.status_code == 400
+
+    def test_bulk_accept_enforces_headcount(self):
+        dev2 = Developer.objects.create(name="Dev Two", email="dev2_bulk@test.com", hourly_cost=100)
+        run = SolverRun.objects.create(objective_used='balanced', status='completed')
+        p1 = AllocationProposal.objects.create(
+            solver_run=run, developer=self.dev, project_slot=self.slot, fit_score=90.0, status='proposed'
+        )
+        p2 = AllocationProposal.objects.create(
+            solver_run=run, developer=dev2, project_slot=self.slot, fit_score=80.0, status='proposed'
+        )
+
+        res = self.client.post('/api/proposals/bulk-accept/', {'proposal_ids': [p1.id, p2.id]}, format='json')
+        assert res.status_code == 200
+        assert res.data['accepted_count'] == 1
+        assert res.data['conflicts_count'] == 1
+
+    def test_direct_allocation_delete_is_blocked(self):
+        """Raw DELETE would cascade-wipe the audit trail (AllocationAuditLog
+        has on_delete=CASCADE). It must be blocked in favor of the audited
+        `cancel` action, which soft-cancels and preserves history."""
+        alloc = Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date="2026-08-01",
+            end_date="2026-09-01",
+            allocated_hours=40,
+            status='confirmed'
+        )
+        audit_log_count_before = alloc.audit_logs.count()
+
+        res = self.client.delete(f'/api/allocations/{alloc.id}/')
+        assert res.status_code == 405
+
+        alloc.refresh_from_db()
+        assert alloc.audit_logs.count() == audit_log_count_before
+
+    def test_bench_trend_reflects_known_allocation(self):
+        from datetime import date, timedelta
+        today = date.today()
+
+        Allocation.objects.all().delete()
+
+        # Developer is allocated for a 5-day window starting 3 days ago.
+        Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date=today - timedelta(days=3),
+            end_date=today + timedelta(days=1),
+            allocated_hours=40,
+            status='confirmed'
+        )
+
+        res = self.client.get('/api/allocations/bench-trend/?days=10')
+        assert res.status_code == 200
+        trend = res.data['trend']
+        assert len(trend) == 10
+
+        total_devs = Developer.objects.count()
+        by_date = {row['date']: row for row in trend}
+
+        # 5 days ago: before the allocation started -> everyone on bench.
+        five_days_ago = (today - timedelta(days=5)).isoformat()
+        assert by_date[five_days_ago]['allocated'] == 0
+        assert by_date[five_days_ago]['bench'] == total_devs
+
+        # Yesterday: inside the allocation window -> this dev counted as allocated.
+        yesterday = (today - timedelta(days=1)).isoformat()
+        assert by_date[yesterday]['allocated'] >= 1
+        assert by_date[yesterday]['bench'] == total_devs - by_date[yesterday]['allocated']
+
+    def test_bench_trend_days_param_is_capped(self):
+        res = self.client.get('/api/allocations/bench-trend/?days=9999')
+        assert res.status_code == 200
+        assert len(res.data['trend']) == 180

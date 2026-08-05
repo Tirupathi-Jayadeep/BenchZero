@@ -1,11 +1,16 @@
 from django.contrib import admin
 from .models import (
     Skill, Developer, DeveloperSkill, Project, ProjectSlot,
-    SlotSkillRequirement, Allocation, SolverRun, AllocationProposal
+    SlotSkillRequirement, Allocation, SolverRun, AllocationProposal,
+    DeveloperLeave, AllocationAuditLog
 )
 
 class DeveloperSkillInline(admin.TabularInline):
     model = DeveloperSkill
+    extra = 1
+
+class DeveloperLeaveInline(admin.TabularInline):
+    model = DeveloperLeave
     extra = 1
 
 class SlotSkillRequirementInline(admin.TabularInline):
@@ -21,6 +26,11 @@ class AllocationProposalInline(admin.TabularInline):
     extra = 0
     readonly_fields = ('developer', 'project_slot', 'fit_score', 'solver_algorithm', 'status', 'notes')
 
+class AllocationAuditLogInline(admin.TabularInline):
+    model = AllocationAuditLog
+    extra = 0
+    readonly_fields = ('action', 'performed_by', 'timestamp', 'reason')
+
 @admin.register(Skill)
 class SkillAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'description')
@@ -32,7 +42,14 @@ class DeveloperAdmin(admin.ModelAdmin):
     list_display = ('name', 'email', 'title', 'hourly_cost', 'max_weekly_hours', 'is_active', 'created_at')
     list_filter = ('is_active', 'title')
     search_fields = ('name', 'email', 'title')
-    inlines = [DeveloperSkillInline]
+    inlines = [DeveloperSkillInline, DeveloperLeaveInline]
+
+@admin.register(DeveloperLeave)
+class DeveloperLeaveAdmin(admin.ModelAdmin):
+    list_display = ('developer', 'start_date', 'end_date', 'reason', 'is_approved', 'approved_by', 'created_at')
+    list_filter = ('is_approved', 'start_date')
+    search_fields = ('developer__name', 'reason')
+    readonly_fields = ('approved_by',)  # only set via the approve/revoke API actions
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
@@ -53,6 +70,13 @@ class AllocationAdmin(admin.ModelAdmin):
     list_display = ('developer', 'project_slot', 'start_date', 'end_date', 'allocated_hours', 'status', 'created_at')
     list_filter = ('status', 'start_date')
     search_fields = ('developer__name', 'project_slot__role_title', 'project_slot__project__name')
+    inlines = [AllocationAuditLogInline]
+
+@admin.register(AllocationAuditLog)
+class AllocationAuditLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'allocation', 'action', 'performed_by', 'timestamp', 'reason')
+    list_filter = ('action', 'timestamp')
+    readonly_fields = ('allocation', 'action', 'performed_by', 'timestamp', 'reason')
 
 @admin.register(SolverRun)
 class SolverRunAdmin(admin.ModelAdmin):

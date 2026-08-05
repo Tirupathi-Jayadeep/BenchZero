@@ -13,6 +13,11 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
+# Set to True (and create at least one user) before exposing this app
+# beyond localhost. See staffing/permissions.py for details. Defaults to
+# False so the zero-config local demo keeps working out of the box.
+REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'False').lower() in ('true', '1', 't')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -79,11 +84,13 @@ STATICFILES_DIRS = []
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # REST Framework Configuration
-# Note: Authentication and permission classes are intentionally set to AllowAny
-# for single-user demo convenience. For production, integrate JWT/OAuth2.
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'staffing.permissions.DemoAwarePermission',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
