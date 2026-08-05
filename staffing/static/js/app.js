@@ -1,3 +1,13 @@
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new BenchZeroApp();
 });
@@ -253,15 +263,18 @@ class BenchZeroApp {
 
         container.innerHTML = recent.map(e => {
             const meta = iconMap[e.action] || { icon: 'fa-circle-info', cls: 'activity-icon-primary' };
-            const who = e.performed_by_name || 'System';
+            const who = escapeHtml(e.performed_by_name || 'System');
             const verb = actionText[e.action] || e.action;
             const when = this.formatRelativeTime(e.timestamp);
-            const reasonText = e.reason ? ` — "${e.reason}"` : '';
+            const reasonText = e.reason ? ` — "${escapeHtml(e.reason)}"` : '';
+            const devName = escapeHtml(e.developer_name);
+            const projName = escapeHtml(e.project_name);
+            const rTitle = escapeHtml(e.role_title);
             return `
                 <div class="activity-item">
                     <div class="activity-icon ${meta.cls}"><i class="fa-solid ${meta.icon}"></i></div>
                     <div class="activity-text">
-                        <strong>${e.developer_name}</strong> ${verb} <strong>${e.project_name}</strong> (${e.role_title})${reasonText}
+                        <strong>${devName}</strong> ${verb} <strong>${projName}</strong> (${rTitle})${reasonText}
                         <small>by ${who} · ${when}</small>
                     </div>
                 </div>
@@ -485,9 +498,9 @@ class BenchZeroApp {
         if (wfBody) {
             wfBody.innerHTML = wf.statusList.map(s => `
                 <tr>
-                    <td>${s.name}</td>
-                    <td><span class="status-badge ${s.badgeClass}">${s.status}</span></td>
-                    <td>${s.detail}</td>
+                    <td>${escapeHtml(s.name)}</td>
+                    <td><span class="status-badge ${s.badgeClass}">${escapeHtml(s.status)}</span></td>
+                    <td>${escapeHtml(s.detail)}</td>
                 </tr>
             `).join('') || '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">No developers yet.</td></tr>';
         }
@@ -507,11 +520,11 @@ class BenchZeroApp {
         const projBody = document.getElementById('project-status-body');
         if (projBody) {
             projBody.innerHTML = proj.rows.map(r => `
-                <tr class="project-row-clickable" data-project-name="${r.name}" title="Click to view suggested developers for ${r.name}">
-                    <td>${r.name}</td>
-                    <td>${r.client}</td>
+                <tr class="project-row-clickable" data-project-name="${escapeHtml(r.name)}" title="Click to view suggested developers for ${escapeHtml(r.name)}">
+                    <td>${escapeHtml(r.name)}</td>
+                    <td>${escapeHtml(r.client)}</td>
                     <td>${r.filled}</td>
-                    <td><span class="status-badge ${r.badgeClass}">${r.status}</span></td>
+                    <td><span class="status-badge ${r.badgeClass}">${escapeHtml(r.status)}</span></td>
                 </tr>
             `).join('') || '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">No projects yet.</td></tr>';
 
@@ -541,7 +554,7 @@ class BenchZeroApp {
         const bodyEl = document.getElementById('drawer-suggestions-body');
         if (!drawer || !titleEl || !bodyEl) return;
 
-        titleEl.innerHTML = `<i class="fa-solid fa-user-tag"></i> Suggested for: ${projectName}`;
+        titleEl.innerHTML = `<i class="fa-solid fa-user-tag"></i> Suggested for: ${escapeHtml(projectName)}`;
 
         // Filter proposals for this project
         const projectProposals = (this.proposals || []).filter(
@@ -560,12 +573,12 @@ class BenchZeroApp {
                     <div class="drawer-candidate-info">
                         <div class="candidate-avatar"><i class="fa-solid fa-user"></i></div>
                         <div>
-                            <strong>${p.developer_name}</strong>
-                            <span class="candidate-subtitle">${p.developer_title || ''}</span>
+                            <strong>${escapeHtml(p.developer_name)}</strong>
+                            <span class="candidate-subtitle">${escapeHtml(p.developer_title || '')}</span>
                         </div>
                     </div>
                     <div class="drawer-candidate-meta">
-                        <span class="candidate-role-chip">${p.role_title}</span>
+                        <span class="candidate-role-chip">${escapeHtml(p.role_title)}</span>
                         <span class="badge badge-emerald">${p.fit_score.toFixed(1)} Fit</span>
                     </div>
                     <button class="btn btn-sm btn-success" onclick="app.acceptProposal(${p.id})">
@@ -1077,14 +1090,14 @@ class BenchZeroApp {
             <div class="proposal-card">
                 <div class="proposal-header">
                     <div class="proposal-title">
-                        <h4>${p.developer_name}</h4>
-                        <span class="subtitle">${p.developer_title}</span>
+                        <h4>${escapeHtml(p.developer_name)}</h4>
+                        <span class="subtitle">${escapeHtml(p.developer_title)}</span>
                     </div>
                     <span class="proposal-score">${p.fit_score.toFixed(1)}</span>
                 </div>
                 <div class="proposal-body">
                     <div class="proposal-slot">
-                        <i class="fa-solid fa-briefcase"></i> <strong>${p.project_name}</strong> - ${p.role_title}
+                        <i class="fa-solid fa-briefcase"></i> <strong>${escapeHtml(p.project_name)}</strong> - ${escapeHtml(p.role_title)}
                     </div>
                     <span class="badge badge-solver">CP-SAT Proposed</span>
                 </div>
@@ -1117,12 +1130,12 @@ class BenchZeroApp {
             const badgeClass = isConfirmed ? 'badge-success' : 'badge-count';
             return `
                 <tr>
-                    <td><strong>${a.developer_name}</strong></td>
-                    <td>${a.project_name}</td>
-                    <td>${a.role_title}</td>
-                    <td>${a.start_date} to ${a.end_date}</td>
+                    <td><strong>${escapeHtml(a.developer_name)}</strong></td>
+                    <td>${escapeHtml(a.project_name)}</td>
+                    <td>${escapeHtml(a.role_title)}</td>
+                    <td>${escapeHtml(a.start_date)} to ${escapeHtml(a.end_date)}</td>
                     <td>${a.allocated_hours}h / week</td>
-                    <td><span class="badge ${badgeClass}">${a.status.toUpperCase()}</span></td>
+                    <td><span class="badge ${badgeClass}">${escapeHtml(a.status).toUpperCase()}</span></td>
                     <td>${actionCell}</td>
                 </tr>
             `;
@@ -1135,13 +1148,13 @@ class BenchZeroApp {
 
         tbody.innerHTML = developers.map(d => {
             const skillsHtml = (d.developer_skills || []).map(s => 
-                `<span class="badge badge-solver" style="margin-right: 4px; margin-bottom: 4px;">${s.skill_name} (Lvl ${s.proficiency_level})</span>`
+                `<span class="badge badge-solver" style="margin-right: 4px; margin-bottom: 4px;">${escapeHtml(s.skill_name)} (Lvl ${s.proficiency_level})</span>`
             ).join('');
 
             return `
                 <tr>
-                    <td><strong>${d.name}</strong></td>
-                    <td>${d.title}</td>
+                    <td><strong>${escapeHtml(d.name)}</strong></td>
+                    <td>${escapeHtml(d.title)}</td>
                     <td>$${floatVal(d.hourly_cost)}/hr</td>
                     <td>${skillsHtml || '<span style="color:var(--text-muted)">No skills recorded</span>'}</td>
                     <td><span class="badge badge-emerald">ACTIVE</span></td>

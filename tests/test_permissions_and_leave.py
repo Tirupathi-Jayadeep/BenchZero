@@ -6,15 +6,20 @@ from staffing.models import Developer, DeveloperLeave, Project, ProjectSlot
 
 
 class TestAuthToggle(TestCase):
-    """REQUIRE_AUTH_FOR_WRITES=False (the default) must keep the zero-config
-    demo working; =True must actually lock down mutating endpoints."""
+    """REQUIRE_AUTH_FOR_WRITES=True (the new default) locks down mutating endpoints;
+    =False allows unauthenticated writes for zero-config demo mode."""
 
     def setUp(self):
         self.client = APIClient()
 
-    def test_anonymous_write_allowed_by_default(self):
+    @override_settings(REQUIRE_AUTH_FOR_WRITES=False)
+    def test_anonymous_write_allowed_in_demo_mode(self):
         res = self.client.post('/api/skills/', {'name': 'Anon Skill', 'category': 'backend'}, format='json')
         assert res.status_code == 201
+
+    def test_anonymous_write_blocked_by_default(self):
+        res = self.client.post('/api/skills/', {'name': 'Blocked Skill Default', 'category': 'backend'}, format='json')
+        assert res.status_code in (401, 403)
 
     def test_anonymous_read_always_allowed(self):
         res = self.client.get('/api/skills/')
@@ -38,6 +43,7 @@ class TestAuthToggle(TestCase):
         assert res.status_code == 201
 
 
+@override_settings(REQUIRE_AUTH_FOR_WRITES=False)
 class TestLeaveApprovalWorkflow(TestCase):
 
     def setUp(self):

@@ -98,6 +98,7 @@ class AllocationSerializer(serializers.ModelSerializer):
             'id', 'developer', 'developer_name', 'project_slot', 'role_title',
             'project_name', 'start_date', 'end_date', 'allocated_hours', 'status', 'created_at', 'audit_logs'
         ]
+        read_only_fields = ['status']
 
 
 class AllocationProposalSerializer(serializers.ModelSerializer):

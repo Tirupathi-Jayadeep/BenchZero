@@ -79,6 +79,11 @@ class ProjectSlot(models.Model):
     weekly_hours_required = models.IntegerField(default=40)
     required_skills = models.ManyToManyField(Skill, through='SlotSkillRequirement', related_name='slots')
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(end_date__gte=models.F('start_date')), name='slot_end_after_start')
+        ]
+
     def __str__(self):
         return f"{self.project.name} - {self.role_title} ({self.start_date} to {self.end_date})"
 
@@ -106,16 +111,27 @@ class Allocation(models.Model):
         ('cancelled', 'Cancelled'),
     ]
 
-    developer = models.ForeignKey(Developer, on_delete=models.CASCADE, related_name='allocations')
-    project_slot = models.ForeignKey(ProjectSlot, on_delete=models.CASCADE, related_name='allocations')
+    developer = models.ForeignKey(Developer, on_delete=models.PROTECT, related_name='allocations')
+    project_slot = models.ForeignKey(ProjectSlot, on_delete=models.PROTECT, related_name='allocations')
     start_date = models.DateField()
     end_date = models.DateField()
     allocated_hours = models.IntegerField(default=40)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='confirmed')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(end_date__gte=models.F('start_date')), name='alloc_end_after_start')
+        ]
+        indexes = [
+            models.Index(fields=['developer', 'status', 'start_date', 'end_date'], name='alloc_dev_stat_dates_idx'),
+        ]
+
     def clean(self):
         from django.core.exceptions import ValidationError
+
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValidationError({'end_date': f"end_date ({self.end_date}) cannot be before start_date ({self.start_date})."})
 
         if self.status == 'confirmed':
             # 1. Check headcount limit on project slot
@@ -206,6 +222,11 @@ class DeveloperLeave(models.Model):
         'auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leaves'
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(end_date__gte=models.F('start_date')), name='leave_end_after_start')
+        ]
 
     def __str__(self):
         status_str = "Approved" if self.is_approved else "Pending"

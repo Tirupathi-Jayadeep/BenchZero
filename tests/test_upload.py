@@ -3,16 +3,16 @@ import pytest
 from datetime import date, timedelta
 from io import BytesIO
 from django.contrib.auth.models import User
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from staffing.models import Developer, Skill, Project, ProjectSlot, DeveloperSkill
-
 from staffing.views import MAX_UPLOAD_ROWS
 
 @pytest.mark.django_db
-class TestFileUploads:
+@override_settings(REQUIRE_AUTH_FOR_WRITES=False)
+class TestFileUploads(TestCase):
 
-    def setup_method(self):
+    def setUp(self):
         self.client = APIClient()
         Developer.objects.filter(email__in=["jane@example.com", "john@example.com", "alice.s@example.com", "bob.m@example.com"]).delete()
         Project.objects.filter(name__in=["Titan Platform", "Helios App"]).delete()

@@ -4,7 +4,7 @@ from scipy.optimize import linear_sum_assignment
 from .eligibility import is_developer_eligible, check_date_overlap
 from .fit_score import compute_fit_score
 
-def solve_scipy_staffing(developers, project_slots, objective='balanced', existing_allocations=None, leaves=None):
+def solve_scipy_staffing(developers, project_slots, objective='balanced', existing_allocations=None, leaves=None, bench_hours=None):
     """
     Solves staffing allocation using SciPy linear_sum_assignment (Hungarian Algorithm).
     Expands multi-headcount slots into individual 1:1 slot instances.
@@ -38,7 +38,7 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
             'total_score': 0.0,
             'runtime_seconds': round(time.time() - start_time, 4),
             'num_variables': 0,
-            'num_constraints': 0,
+            'search_space_size': 0,
             'total_eligible_pairs': 0
         }
 
@@ -52,7 +52,7 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
         for j, slot_item in enumerate(expanded_slots):
             s = slot_item['slot_obj']
             if is_developer_eligible(dev, s, existing_allocations=existing_allocations, leaves=leaves):
-                score = compute_fit_score(dev, s, objective, cost_stats=cost_stats)
+                score = compute_fit_score(dev, s, objective, cost_stats=cost_stats, bench_hours=bench_hours)
                 cost_matrix[i, j] = 1000.0 - score  # invert score to cost
                 fit_scores_grid[(dev.id, j)] = (score, s)
 
@@ -126,6 +126,6 @@ def solve_scipy_staffing(developers, project_slots, objective='balanced', existi
         'total_score': round(total_score, 2),
         'runtime_seconds': runtime,
         'num_variables': num_devs * num_slots,
-        'num_constraints': num_devs + num_slots,
+        'search_space_size': num_devs * num_slots,
         'total_eligible_pairs': int(np.sum(cost_matrix < MAX_PENALTY / 2))
     }

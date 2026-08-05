@@ -19,6 +19,12 @@ def run_optimization_engine(objective='balanced', time_limit_seconds=10.0, run_c
     existing_allocations = list(Allocation.objects.filter(status='confirmed').select_related('developer', 'project_slot'))
     leaves = list(DeveloperLeave.objects.filter(is_approved=True))
 
+    # Calculate developer committed hours from existing confirmed allocations
+    bench_hours = {}
+    for alloc in existing_allocations:
+        dev_id = alloc.developer_id
+        bench_hours[dev_id] = bench_hours.get(dev_id, 0) + getattr(alloc, 'allocated_hours', 40)
+
     # Build input snapshot for audit trail
     input_snapshot = {
         'total_developers': len(developers),
@@ -43,7 +49,8 @@ def run_optimization_engine(objective='balanced', time_limit_seconds=10.0, run_c
             objective=objective, 
             time_limit_seconds=time_limit_seconds,
             existing_allocations=existing_allocations,
-            leaves=leaves
+            leaves=leaves,
+            bench_hours=bench_hours
         )
 
         comparison_results = {}
@@ -52,13 +59,15 @@ def run_optimization_engine(objective='balanced', time_limit_seconds=10.0, run_c
                 developers, project_slots, 
                 objective=objective,
                 existing_allocations=existing_allocations,
-                leaves=leaves
+                leaves=leaves,
+                bench_hours=bench_hours
             )
             scipy_result = solve_scipy_staffing(
                 developers, project_slots, 
                 objective=objective,
                 existing_allocations=existing_allocations,
-                leaves=leaves
+                leaves=leaves,
+                bench_hours=bench_hours
             )
 
             cpsat_score = cpsat_result['total_score']

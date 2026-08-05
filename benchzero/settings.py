@@ -13,10 +13,18 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# Set to True (and create at least one user) before exposing this app
-# beyond localhost. See staffing/permissions.py for details. Defaults to
-# False so the zero-config local demo keeps working out of the box.
-REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'False').lower() in ('true', '1', 't')
+# Defaults to True for secure deployment. Set REQUIRE_AUTH_FOR_WRITES=False via .env.demo
+# only when running zero-config local interactive demo.
+REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'True').lower() in ('true', '1', 't')
+
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+    if not REQUIRE_AUTH_FOR_WRITES:
+        raise ImproperlyConfigured("REQUIRE_AUTH_FOR_WRITES must be True when DEBUG=False")
+    if os.getenv('SECRET_KEY', '').startswith('django-insecure-'):
+        raise ImproperlyConfigured("SECRET_KEY must be set via env in production")
+    if not os.getenv('ALLOWED_HOSTS'):
+        raise ImproperlyConfigured("ALLOWED_HOSTS must be set via env in production")
 
 INSTALLED_APPS = [
     'django.contrib.admin',

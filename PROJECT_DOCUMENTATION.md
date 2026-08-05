@@ -1,6 +1,6 @@
 # PROJECT DOCUMENTATION & TECHNICAL SPECIFICATION
 
-**Project Title:** BenchZero – Constraint-Based Multi-Objective Workforce Staffing Allocation Engine  
+**Project Title:** BenchZero: A Constraint Programming Approach to Multi-Objective Workforce Allocation  
 **Repository:** Tirupathi-Jayadeep/BenchZero  
 **Tech Stack:** Python 3.13, Django 5.0, Django REST Framework, Google OR-Tools CP-SAT, SciPy, HTML5, Vanilla CSS3, JS ES6, Chart.js  
 

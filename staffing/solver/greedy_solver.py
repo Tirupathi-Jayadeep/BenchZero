@@ -2,7 +2,7 @@ import time
 from .eligibility import is_developer_eligible, check_date_overlap
 from .fit_score import compute_fit_score
 
-def solve_greedy_staffing(developers, project_slots, objective='balanced', existing_allocations=None, leaves=None):
+def solve_greedy_staffing(developers, project_slots, objective='balanced', existing_allocations=None, leaves=None, bench_hours=None):
     """
     Solves the staffing allocation problem using a Naive Greedy Assignment Algorithm.
     Iteratively picks the highest scoring eligible (developer, slot) pair without global optimization.
@@ -21,7 +21,7 @@ def solve_greedy_staffing(developers, project_slots, objective='balanced', exist
     for d in developers:
         for s in project_slots:
             if is_developer_eligible(d, s, existing_allocations=existing_allocations, leaves=leaves):
-                score = compute_fit_score(d, s, objective, cost_stats=cost_stats)
+                score = compute_fit_score(d, s, objective, cost_stats=cost_stats, bench_hours=bench_hours)
                 candidate_pairs.append({
                     'developer_id': d.id,
                     'project_slot_id': s.id,
@@ -112,6 +112,6 @@ def solve_greedy_staffing(developers, project_slots, objective='balanced', exist
         'total_score': round(total_score, 2),
         'runtime_seconds': runtime,
         'num_variables': len(candidate_pairs),
-        'num_constraints': len(developers) + len(project_slots),
+        'search_space_size': len(candidate_pairs),
         'total_eligible_pairs': len(candidate_pairs)
     }

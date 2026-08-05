@@ -1,7 +1,8 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from staffing.models import Developer, Skill, Project, ProjectSlot, SolverRun, AllocationProposal, Allocation
 
+@override_settings(REQUIRE_AUTH_FOR_WRITES=False)
 class TestStaffingAPI(TestCase):
 
     def setUp(self):

@@ -3,7 +3,7 @@ from ortools.sat.python import cp_model
 from .eligibility import is_developer_eligible, check_date_overlap
 from .fit_score import compute_fit_score
 
-def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_limit_seconds=10.0, existing_allocations=None, leaves=None):
+def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_limit_seconds=10.0, existing_allocations=None, leaves=None, bench_hours=None):
     """
     Solves the staffing allocation problem using Google OR-Tools CP-SAT Constraint Solver.
     Enforces linear weekly-hour capacity constraints, headcount limits, leaves, and existing allocations.
@@ -32,7 +32,7 @@ def solve_cpsat_staffing(developers, project_slots, objective='balanced', time_l
                 assign[(d.id, s.id)] = var
                 eligible_devs_by_slot[s.id].append(d.id)
                 eligible_slots_by_dev[d.id].append(s.id)
-                fit_scores[(d.id, s.id)] = compute_fit_score(d, s, objective, cost_stats=cost_stats)
+                fit_scores[(d.id, s.id)] = compute_fit_score(d, s, objective, cost_stats=cost_stats, bench_hours=bench_hours)
 
     num_constraints = 0
 
