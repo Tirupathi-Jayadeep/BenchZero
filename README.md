@@ -213,13 +213,37 @@ When `REQUIRE_AUTH_FOR_WRITES=True`:
 
 ### 4. Docker Compose Deployment
 
+#### Local Development Profile
 ```bash
 docker-compose up --build
 ```
+Runs BenchZero local development web server (`DEBUG=True`) alongside a PostgreSQL container.
 
-Runs BenchZero web server alongside a PostgreSQL database container.
+#### Production Profile
+```bash
+export SECRET_KEY="your-production-secret-key"
+export ALLOWED_HOSTS="yourdomain.com,api.yourdomain.com"
+docker-compose -f docker-compose.prod.yml up --build -d
+```
+Runs production Gunicorn WSGI server (`DEBUG=False`, `REQUIRE_AUTH_FOR_WRITES=True`, WhiteNoise static asset serving, 90s worker timeout) with immutable container builds.
 
 ---
+
+### 5. Multi-Process Optimization & Future Scale Roadmap
+
+1. **Multi-Process PostgreSQL Advisory Locking**:
+   - `POST /api/solver-runs/run/` uses PostgreSQL session advisory locks (`pg_try_advisory_lock` / `pg_advisory_unlock`) when running on Postgres, ensuring single-in-flight solver execution across all Gunicorn/WSGI worker processes and nodes. Falls back to `threading.Lock()` on SQLite.
+   - *PgBouncer Caveat*: If deploying behind PgBouncer, ensure PgBouncer is configured in session-pooling mode (or switch to `pg_advisory_xact_lock` scoped within a database transaction).
+
+2. **Async Task Queue (Celery / RQ)**:
+   - For high-volume production beyond synchronous HTTP limits, solver runs can be offloaded to background task queues with task-level deduplication.
+
+3. **Rate Limiting & Throttling**:
+   - DRF `UserRateThrottle` and `ScopedRateThrottle` can be attached to administrative endpoints for additional protection against API spamming.
+
+4. **Bench Trend Daily Snapshot Table**:
+   - The `bench_trend` endpoint is computed dynamically ($O(\text{days} \times \text{allocations})$). For large enterprises (10,000+ staff), a nightly materialized daily-snapshot table can store pre-calculated availability metrics.
+
 
 ## 📁 7. Project Directory Structure
 

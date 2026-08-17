@@ -251,3 +251,36 @@ class TestStaffingAPI(TestCase):
             if locked:
                 _solver_lock.release()
 
+    def test_postgres_advisory_lock_called_and_released(self):
+        from unittest.mock import patch, MagicMock
+        from staffing.views import SOLVER_LOCK_KEY
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = [True]
+
+        mock_conn = MagicMock()
+        mock_conn.vendor = 'postgresql'
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        with patch('staffing.views.connection', mock_conn):
+            res = self.client.post('/api/solver-runs/run/', {'objective': 'balanced', 'time_limit': 1.0}, format='json')
+            assert res.status_code == 200
+
+            # Verify pg_try_advisory_lock and pg_advisory_unlock SQL executed
+            calls = [c[0][0] for c in mock_cursor.execute.call_args_list]
+            assert any("pg_try_advisory_lock" in sql for sql in calls)
+            assert any("pg_advisory_unlock" in sql for sql in calls)
+
+    def test_solver_lock_releases_on_exception(self):
+        from unittest.mock import patch
+        from staffing.views import _solver_lock
+
+        with patch('staffing.views.run_optimization_engine', side_effect=RuntimeError("Solver crash simulation")):
+            res = self.client.post('/api/solver-runs/run/', {'objective': 'balanced', 'time_limit': 1.0}, format='json')
+            assert res.status_code == 500
+
+        # Verify lock was released despite exception and next call is not 429
+        res2 = self.client.post('/api/solver-runs/run/', {'objective': 'balanced', 'time_limit': 1.0}, format='json')
+        assert res2.status_code == 200
+
+

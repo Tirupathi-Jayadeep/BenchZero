@@ -1,0 +1,46 @@
+# Production Docker Compose Profile for BenchZero
+# Usage:
+#   export SECRET_KEY="your-random-secure-production-key"
+#   export ALLOWED_HOSTS="yourdomain.com,api.yourdomain.com"
+#   docker-compose -f docker-compose.prod.yml up --build -d
+
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: benchzero_prod_db
+    restart: always
+    environment:
+      POSTGRES_DB: benchzero_prod
+      POSTGRES_USER: benchzero_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_in_production_password}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchzero_admin -d benchzero_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    container_name: benchzero_prod_web
+    restart: always
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn benchzero.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 90"
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - REQUIRE_AUTH_FOR_WRITES=True
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_URL=postgres://benchzero_admin:${POSTGRES_PASSWORD:-change_this_in_production_password}@db:5432/benchzero_prod
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_prod_data:

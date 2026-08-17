@@ -1,4 +1,12 @@
+# WARNING: This docker-compose.yml configuration is strictly for LOCAL DEVELOPMENT
+# and interactive demo testing. It runs with DEBUG=True, a default secret key,
+# and hot-reloading code volume mounts.
+#
+# For production deployments, use docker-compose.prod.yml instead:
+#   docker-compose -f docker-compose.prod.yml up --build -d
+
 version: '3.8'
+
 
 services:
   db:

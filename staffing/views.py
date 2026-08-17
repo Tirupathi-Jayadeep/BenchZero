@@ -4,8 +4,9 @@ import io
 import logging
 import threading
 from datetime import datetime, date, timedelta
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import ProtectedError
+
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.views.generic import TemplateView
@@ -797,6 +798,7 @@ class AllocationViewSet(viewsets.ModelViewSet):
         return Response({'days': days, 'trend': trend})
 
 
+SOLVER_LOCK_KEY = 847392
 _solver_lock = threading.Lock()
 
 
@@ -811,7 +813,17 @@ class SolverRunViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='run')
     def run_solver(self, request):
-        if not _solver_lock.acquire(blocking=False):
+        use_pg_lock = (connection.vendor == 'postgresql')
+        got_lock = False
+
+        if use_pg_lock:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_try_advisory_lock(%s)", [SOLVER_LOCK_KEY])
+                got_lock = bool(cursor.fetchone()[0])
+        else:
+            got_lock = _solver_lock.acquire(blocking=False)
+
+        if not got_lock:
             return Response(
                 {
                     'error': "A solver optimization run is currently in progress. "
@@ -819,6 +831,7 @@ class SolverRunViewSet(viewsets.ReadOnlyModelViewSet):
                 },
                 status=status.HTTP_429_TOO_MANY_REQUESTS
             )
+
         try:
             objective = request.data.get('objective', 'balanced')
             raw_time_limit = request.data.get('time_limit', 10.0)
@@ -842,7 +855,16 @@ class SolverRunViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
-            _solver_lock.release()
+            if use_pg_lock:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", [SOLVER_LOCK_KEY])
+            else:
+                if got_lock:
+                    try:
+                        _solver_lock.release()
+                    except RuntimeError:
+                        pass
+
 
 
 class AllocationProposalViewSet(viewsets.ModelViewSet):
