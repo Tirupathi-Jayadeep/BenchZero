@@ -1,27 +1,41 @@
 :root {
-    --bg-main: #0b0f17;
-    --bg-sidebar: #111726;
-    --bg-card: #151e33;
-    --bg-card-hover: #1c2844;
-    --border-color: #23304d;
-    --border-highlight: #4f46e5;
+    /* Dispatch Board Palette: #0d1015 board background vs #181d24 panels for crisp elevation */
+    --bg-main: #0d1015;
+    --bg-sidebar: #11151c;
+    --bg-card: #181d24;
+    --bg-card-hover: #1f252e;
+    --border-color: #282e38;
+    --border-bright: #3d4450;
+    --border-highlight: #58a6ff;
     
-    --text-main: #f3f4f6;
-    --text-muted: #9ca3af;
-    --text-dim: #6b7280;
+    --text-main: #e8e6df;       /* chalk-white text */
+    --text-muted: #8b949e;      /* chalk-gray text */
+    --text-dim: #6e7681;
     
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --primary-shadow: rgba(79, 70, 229, 0.3);
+    /* Primary / Accent */
+    --primary: #58a6ff;         /* Electric blue */
+    --primary-hover: #388bfd;
+    --primary-shadow: rgba(88, 166, 255, 0.25);
     
-    --emerald: #10b981;
-    --emerald-bg: rgba(16, 185, 129, 0.15);
-    --purple: #8b5cf6;
-    --amber: #f59e0b;
-    --rose: #ef4444;
+    /* Status Colors (Distinct from Algorithm Comparison Series) */
+    --amber: #f0a202;           /* AMBER — pending / proposed */
+    --amber-bg: rgba(240, 162, 2, 0.15);
+    --green: #3fb950;           /* GREEN — confirmed / staffed */
+    --green-bg: rgba(63, 185, 80, 0.15);
+    --red: #e5484d;             /* RED — conflict / rejected */
+    --red-bg: rgba(229, 72, 77, 0.15);
+    --purple: #bc8cff;
+    --purple-bg: rgba(188, 140, 255, 0.15);
+
+    /* Algorithm Comparison Hues (4th neutral hue for greedy to prevent visual collision) */
+    --algo-cpsat: #58a6ff;       /* Electric Blue */
+    --algo-scipy: #bc8cff;       /* Purple */
+    --algo-greedy: #8b949e;      /* Neutral Chalk Gray */
     
-    --font-heading: 'Outfit', sans-serif;
+    /* Typography: Monospace for numbers/status, Condensed Grotesque for headers */
+    --font-heading: 'Archivo Narrow', 'Roboto Condensed', sans-serif;
     --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
 }
 
 * {
@@ -200,6 +214,80 @@ body {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* Monospace & Status Display Helpers */
+.stat-number-mono, .mono-text, .mono-cell, .arrival-score {
+    font-family: var(--font-mono) !important;
+    letter-spacing: -0.5px;
+}
+
+/* 3D Split-Flap Flip Animation for newly landed solver proposal rows */
+@keyframes splitFlapFlip {
+    0% {
+        transform: perspective(600px) rotateX(-90deg);
+        opacity: 0.1;
+        background-color: #11151c;
+    }
+    50% {
+        transform: perspective(600px) rotateX(-20deg);
+        background-color: #212730;
+    }
+    100% {
+        transform: perspective(600px) rotateX(0deg);
+        opacity: 1;
+        background-color: var(--bg-card);
+    }
+}
+
+.split-flap-in {
+    animation: splitFlapFlip 0.48s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+    transform-origin: top center;
+    backface-visibility: hidden;
+}
+
+/* Split-Flap Status Dot Badges */
+.status-dot-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.status-dot-amber {
+    background: rgba(240, 162, 2, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(240, 162, 2, 0.4);
+}
+
+.status-dot-green {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+    border: 1px solid rgba(63, 185, 80, 0.4);
+}
+
+.status-dot-red {
+    background: rgba(229, 72, 77, 0.15);
+    color: var(--red);
+    border: 1px solid rgba(229, 72, 77, 0.4);
+}
+
+.status-dot-icon {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot-amber .status-dot-icon { background-color: var(--amber); }
+.status-dot-green .status-dot-icon { background-color: var(--green); }
+.status-dot-red .status-dot-icon { background-color: var(--red); }
+
 
 /* Cards & Enterprise UI */
 .card {

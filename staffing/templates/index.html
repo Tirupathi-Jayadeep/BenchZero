@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BenchZero - Optimized Staffing Allocation Engine</title>
+    <title>BenchZero - Operations Dispatch Board</title>
     
-    <!-- Google Fonts -->
+    <!-- Google Fonts: Monospace for numbers/status, Condensed Grotesque for manifest headers -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Roboto+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
     
     <!-- FontAwesome Icons & Chart.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=4.0">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=5.0">
 </head>
 <body>
     <div class="app-layout">
@@ -23,39 +23,39 @@
         <aside class="sidebar">
             <div class="brand">
                 <div class="brand-logo">
-                    <i class="fa-solid fa-microchip"></i>
+                    <i class="fa-solid fa-plane-departure"></i>
                 </div>
                 <div class="brand-text">
-                    <h2>BenchZero</h2>
-                    <span class="badge badge-solver">CP-SAT Engine</span>
+                    <h2>BENCHZERO</h2>
+                    <span class="badge badge-solver">DISPATCH BOARD</span>
                 </div>
             </div>
 
             <nav class="nav-menu">
                 <button class="nav-item active" data-tab="dashboard">
-                    <i class="fa-solid fa-chart-pie"></i> Executive Overview
+                    <i class="fa-solid fa-list-ol"></i> Dispatch Board
                 </button>
                 <button class="nav-item" data-tab="workbench">
-                    <i class="fa-solid fa-sliders"></i> Optimization Workbench
+                    <i class="fa-solid fa-sliders"></i> Optimization Engine
                 </button>
                 <button class="nav-item" data-tab="proposals">
-                    <i class="fa-solid fa-list-check"></i> Proposals & Decisions <span class="badge badge-count" id="pending-proposals-badge">0</span>
+                    <i class="fa-solid fa-list-check"></i> Proposals Hub <span class="badge badge-count" id="pending-proposals-badge">0</span>
                 </button>
                 <button class="nav-item" data-tab="matrix">
-                    <i class="fa-solid fa-users-gear"></i> Resource & Slot Matrix
+                    <i class="fa-solid fa-users-gear"></i> Slot Capacity Matrix
                 </button>
                 <button class="nav-item" data-tab="roles-dashboard">
-                    <i class="fa-solid fa-user-tag"></i> Developer Roles Dashboard
+                    <i class="fa-solid fa-user-tag"></i> Developer Roles
                 </button>
                 <button class="nav-item" data-tab="management">
-                    <i class="fa-solid fa-database"></i> Resource Data Setup
+                    <i class="fa-solid fa-database"></i> Workforce Setup
                 </button>
             </nav>
 
             <div class="sidebar-footer">
                 <div class="engine-status">
                     <span class="status-dot online"></span>
-                    <span>OR-Tools CP-SAT 9.15</span>
+                    <span class="mono-text">CP-SAT 9.15 ENGINE</span>
                 </div>
             </div>
         </aside>
@@ -65,61 +65,79 @@
             <!-- Header Bar -->
             <header class="top-header">
                 <div class="header-title">
-                    <h1 id="page-title">Executive Overview</h1>
-                    <p class="subtitle">Constraint-Satisfaction Workforce Staffing Engine</p>
+                    <h1 id="page-title">DISPATCH BOARD // LIVE MANIFEST</h1>
+                    <p class="subtitle">OR-TOOLS CP-SAT CONSTRAINT SATISFACTION STAFFING ENGINE</p>
                 </div>
                 <div class="header-actions">
                     <button class="btn btn-primary" id="btn-quick-run">
-                        <i class="fa-solid fa-bolt"></i> Run CP-SAT Solver
+                        <i class="fa-solid fa-bolt"></i> RUN CP-SAT SOLVER
                     </button>
                 </div>
             </header>
 
             <div class="content-body">
-                <!-- TAB 1: EXECUTIVE OVERVIEW -->
+                <!-- TAB 1: DISPATCH BOARD LANDING VIEW -->
                 <section id="tab-dashboard" class="tab-pane active">
-                    <div class="stats-grid">
+                    
+                    <!-- LANDING VIEW: LIVE DISPATCH BOARD & CANDIDATE ASSIGNMENT MANIFEST -->
+                    <div class="card card-manifest margin-bottom-lg">
+                        <div class="card-header manifest-header-bar">
+                            <div class="manifest-header-title">
+                                <h3><i class="fa-solid fa-plane-arrival"></i> STAFFING MANIFEST & CANDIDATE ASSIGNMENT</h3>
+                                <span class="badge badge-solver mono-text" id="manifest-status-tag">LIVE MANIFEST</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline" onclick="app.switchTab('proposals')">Review All Proposals &rarr;</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="dash-candidate-assignments-grouped">
+                                <!-- Rendered dynamically as project-wise manifest groups -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OPERATIONS OVERVIEW METRICS GRID -->
+                    <div class="stats-grid margin-bottom-lg">
                         <div class="stat-card">
                             <div class="stat-icon icon-blue"><i class="fa-solid fa-users"></i></div>
                             <div class="stat-info">
-                                <span class="stat-label">Total Workforce</span>
-                                <h3 id="stat-total-devs">0</h3>
+                                <span class="stat-label">TOTAL WORKFORCE</span>
+                                <h3 id="stat-total-devs" class="stat-number-mono">0</h3>
                             </div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon icon-amber"><i class="fa-solid fa-couch"></i></div>
                             <div class="stat-info">
-                                <span class="stat-label">Bench Developers</span>
-                                <h3 id="stat-bench-devs">0</h3>
+                                <span class="stat-label">BENCH DEVELOPERS</span>
+                                <h3 id="stat-bench-devs" class="stat-number-mono">0</h3>
                             </div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon icon-green"><i class="fa-solid fa-briefcase"></i></div>
                             <div class="stat-info">
-                                <span class="stat-label">Staffed Slots</span>
-                                <h3 id="stat-staffed-slots">0</h3>
+                                <span class="stat-label">STAFFED SLOTS</span>
+                                <h3 id="stat-staffed-slots" class="stat-number-mono">0</h3>
                             </div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon icon-purple"><i class="fa-solid fa-star"></i></div>
                             <div class="stat-info">
-                                <span class="stat-label">High-Prio Fulfilled</span>
-                                <h3 id="stat-high-prio">0%</h3>
+                                <span class="stat-label">HIGH-PRIO FULFILLED</span>
+                                <h3 id="stat-high-prio" class="stat-number-mono">0%</h3>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Workforce & Project Staffing Status (what a PM actually opens the tool to check) -->
+                    <!-- WORKFORCE DISPATCH & PROJECT STAFFING PANELS -->
                     <div class="status-panels-grid margin-bottom-lg">
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-people-group"></i> Workforce Status</h3>
+                                <h3><i class="fa-solid fa-people-group"></i> WORKFORCE DISPATCH STATUS</h3>
                             </div>
                             <div class="card-body">
                                 <div class="status-summary-row">
-                                    <div class="status-chip status-chip-emerald"><strong id="wf-allocated-count">0</strong><span>Allocated</span></div>
-                                    <div class="status-chip status-chip-amber"><strong id="wf-bench-count">0</strong><span>On Bench</span></div>
-                                    <div class="status-chip status-chip-purple"><strong id="wf-leave-count">0</strong><span>On Leave</span></div>
+                                    <div class="status-chip status-chip-emerald"><strong id="wf-allocated-count" class="mono-text">0</strong><span>Allocated</span></div>
+                                    <div class="status-chip status-chip-amber"><strong id="wf-bench-count" class="mono-text">0</strong><span>On Bench</span></div>
+                                    <div class="status-chip status-chip-purple"><strong id="wf-leave-count" class="mono-text">0</strong><span>On Leave</span></div>
                                 </div>
                                 <div class="status-panel-body">
                                     <div class="chart-wrapper chart-wrapper-sm">
@@ -128,7 +146,7 @@
                                     <div class="table-responsive status-list-scroll">
                                         <table class="data-table">
                                             <thead>
-                                                <tr><th>Developer</th><th>Status</th><th>Details</th></tr>
+                                                <tr><th>DEVELOPER</th><th>STATUS</th><th>DETAILS</th></tr>
                                             </thead>
                                             <tbody id="workforce-status-body">
                                                 <!-- Rendered dynamically -->
@@ -141,13 +159,13 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-diagram-project"></i> Project Staffing Status</h3>
+                                <h3><i class="fa-solid fa-diagram-project"></i> PROJECT STAFFING MANIFEST</h3>
                             </div>
                             <div class="card-body">
                                 <div class="status-summary-row">
-                                    <div class="status-chip status-chip-emerald"><strong id="proj-full-count">0</strong><span>Fully Staffed</span></div>
-                                    <div class="status-chip status-chip-amber"><strong id="proj-partial-count">0</strong><span>Partial</span></div>
-                                    <div class="status-chip status-chip-rose"><strong id="proj-unstaffed-count">0</strong><span>Unstaffed</span></div>
+                                    <div class="status-chip status-chip-emerald"><strong id="proj-full-count" class="mono-text">0</strong><span>Fully Staffed</span></div>
+                                    <div class="status-chip status-chip-amber"><strong id="proj-partial-count" class="mono-text">0</strong><span>Partial</span></div>
+                                    <div class="status-chip status-chip-rose"><strong id="proj-unstaffed-count" class="mono-text">0</strong><span>Unstaffed</span></div>
                                 </div>
                                 <div class="status-panel-body">
                                     <div class="chart-wrapper chart-wrapper-sm">
@@ -156,7 +174,7 @@
                                     <div class="table-responsive status-list-scroll">
                                         <table class="data-table" id="project-status-table">
                                             <thead>
-                                                <tr><th>Project</th><th>Client</th><th>Slots Filled</th><th>Status</th></tr>
+                                                <tr><th>PROJECT</th><th>CLIENT</th><th>SLOTS FILLED</th><th>STATUS</th></tr>
                                             </thead>
                                             <tbody id="project-status-body">
                                                 <!-- Rendered dynamically -->
@@ -178,11 +196,11 @@
                         </div>
                     </div>
 
-                    <!-- Activity Log & Bench Trend (Phase 2) -->
+                    <!-- ACTIVITY LOG & BENCH TREND -->
                     <div class="status-panels-grid margin-bottom-lg">
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Activity Log</h3>
+                                <h3><i class="fa-solid fa-clock-rotate-left"></i> DISPATCH ACTIVITY LOG</h3>
                             </div>
                             <div class="card-body">
                                 <div class="activity-feed-scroll" id="activity-log-feed">
@@ -193,7 +211,7 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-chart-line"></i> Bench % Trend (Last 30 Days)</h3>
+                                <h3><i class="fa-solid fa-chart-line"></i> BENCH % CAPACITY TREND (LAST 30 DAYS)</h3>
                             </div>
                             <div class="card-body">
                                 <div class="chart-wrapper chart-wrapper-md">
@@ -203,11 +221,11 @@
                         </div>
                     </div>
 
-                    <!-- Prominent Hero & Comparison Section -->
+                    <!-- CP-SAT OPTIMIZATION BENCHMARK SECTION -->
                     <div class="card card-hero margin-bottom-lg">
                         <div class="card-header">
-                            <h3><i class="fa-solid fa-trophy"></i> CP-SAT Optimization Solver vs Baseline Matchers</h3>
-                            <span class="badge badge-emerald" id="dash-gain-badge">CP-SAT Optimal</span>
+                            <h3><i class="fa-solid fa-trophy"></i> CP-SAT OPTIMIZATION VS BASELINE MATCHERS</h3>
+                            <span class="badge badge-emerald mono-text" id="dash-gain-badge">CP-SAT OPTIMAL</span>
                         </div>
                         <div class="card-body">
                             <div class="algorithm-cards-grid">
@@ -215,11 +233,11 @@
                                 <div class="algo-card winner-card">
                                     <div class="algo-badge">GOOGLE OR-TOOLS CP-SAT</div>
                                     <h4 class="algo-title">Constraint Satisfaction</h4>
-                                    <div class="algo-score" id="dash-cpsat-score">0.0</div>
+                                    <div class="algo-score stat-number-mono" id="dash-cpsat-score">0.0</div>
                                     <div class="algo-details">
-                                        <div><span>Assigned:</span> <strong id="dash-cpsat-assigned">0</strong></div>
-                                        <div><span>Bench:</span> <strong id="dash-cpsat-bench">0</strong></div>
-                                        <div><span>Runtime:</span> <strong id="dash-cpsat-runtime">0.0s</strong></div>
+                                        <div><span>Assigned:</span> <strong id="dash-cpsat-assigned" class="mono-text">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-cpsat-bench" class="mono-text">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-cpsat-runtime" class="mono-text">0.0s</strong></div>
                                     </div>
                                 </div>
 
@@ -227,11 +245,11 @@
                                 <div class="algo-card">
                                     <div class="algo-badge gray">NAIVE GREEDY MATCHING</div>
                                     <h4 class="algo-title">Local Decision Matcher</h4>
-                                    <div class="algo-score" id="dash-greedy-score">0.0</div>
+                                    <div class="algo-score stat-number-mono" id="dash-greedy-score">0.0</div>
                                     <div class="algo-details">
-                                        <div><span>Assigned:</span> <strong id="dash-greedy-assigned">0</strong></div>
-                                        <div><span>Bench:</span> <strong id="dash-greedy-bench">0</strong></div>
-                                        <div><span>Runtime:</span> <strong id="dash-greedy-runtime">0.0s</strong></div>
+                                        <div><span>Assigned:</span> <strong id="dash-greedy-assigned" class="mono-text">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-greedy-bench" class="mono-text">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-greedy-runtime" class="mono-text">0.0s</strong></div>
                                     </div>
                                 </div>
 
@@ -239,11 +257,11 @@
                                 <div class="algo-card">
                                     <div class="algo-badge gray">SCIPY HUNGARIAN MATCHING</div>
                                     <h4 class="algo-title">Linear Sum Assignment (1:1)</h4>
-                                    <div class="algo-score" id="dash-scipy-score">0.0</div>
+                                    <div class="algo-score stat-number-mono" id="dash-scipy-score">0.0</div>
                                     <div class="algo-details">
-                                        <div><span>Assigned:</span> <strong id="dash-scipy-assigned">0</strong></div>
-                                        <div><span>Bench:</span> <strong id="dash-scipy-bench">0</strong></div>
-                                        <div><span>Runtime:</span> <strong id="dash-scipy-runtime">0.0s</strong></div>
+                                        <div><span>Assigned:</span> <strong id="dash-scipy-assigned" class="mono-text">0</strong></div>
+                                        <div><span>Bench:</span> <strong id="dash-scipy-bench" class="mono-text">0</strong></div>
+                                        <div><span>Runtime:</span> <strong id="dash-scipy-runtime" class="mono-text">0.0s</strong></div>
                                     </div>
                                 </div>
                             </div>
@@ -253,20 +271,8 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- PROJECT-WISE CANDIDATE ASSIGNMENT MAPPING -->
-                    <div class="card margin-bottom-lg">
-                        <div class="card-header">
-                            <h3><i class="fa-solid fa-user-check"></i> Candidate Assignment Mapping (Suggested Staffing Plan)</h3>
-                            <button class="btn btn-sm btn-outline" onclick="app.switchTab('proposals')">Review All Proposals &rarr;</button>
-                        </div>
-                        <div class="card-body">
-                            <div id="dash-candidate-assignments-grouped">
-                                <!-- Rendered dynamically as project-wise groups -->
-                            </div>
-                        </div>
-                    </div>
                 </section>
+
 
                 <!-- TAB 2: OPTIMIZATION WORKBENCH -->
                 <section id="tab-workbench" class="tab-pane">

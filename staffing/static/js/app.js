@@ -20,6 +20,7 @@ class BenchZeroApp {
         this.allocations = [];
         this.developers = [];
         this.projects = [];
+        this.isNewSolverRun = false;
 
         this.benchmarkChart = null;
         this.dashBenchmarkChart = null;
@@ -617,6 +618,7 @@ class BenchZeroApp {
 
             const data = await res.json();
             this.solverData = data;
+            this.isNewSolverRun = true;
 
             this.renderDashboardMetrics(data);
             this.renderWorkbenchComparison(data);
@@ -702,28 +704,28 @@ class BenchZeroApp {
                     {
                         label: 'Google OR-Tools CP-SAT (Optimal)',
                         data: [cpsat.total_score || 0, cpsat.assignments ? cpsat.assignments.length : 0],
-                        backgroundColor: '#4f46e5'
-                    },
-                    {
-                        label: 'Naive Greedy Matcher',
-                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
-                        backgroundColor: '#6b7280'
+                        backgroundColor: '#58a6ff'
                     },
                     {
                         label: 'SciPy Bipartite Matcher',
                         data: [scipy.total_score || 0, scipy.assignments ? scipy.assignments.length : 0],
-                        backgroundColor: '#8b5cf6'
+                        backgroundColor: '#bc8cff'
+                    },
+                    {
+                        label: 'Naive Greedy Matcher',
+                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
+                        backgroundColor: '#8b949e'
                     }
                 ]
             },
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { labels: { color: '#9ca3af' } }
+                    legend: { labels: { color: '#8b949e' } }
                 },
                 scales: {
-                    x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
                 }
             }
         });
@@ -745,28 +747,28 @@ class BenchZeroApp {
                     {
                         label: 'Google OR-Tools CP-SAT (Optimal)',
                         data: [cpsat.total_score || 0, cpsat.assignments ? cpsat.assignments.length : 0],
-                        backgroundColor: '#4f46e5'
-                    },
-                    {
-                        label: 'Naive Greedy Matcher',
-                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
-                        backgroundColor: '#6b7280'
+                        backgroundColor: '#58a6ff'
                     },
                     {
                         label: 'SciPy Bipartite Matcher',
                         data: [scipy.total_score || 0, scipy.assignments ? scipy.assignments.length : 0],
-                        backgroundColor: '#8b5cf6'
+                        backgroundColor: '#bc8cff'
+                    },
+                    {
+                        label: 'Naive Greedy Matcher',
+                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
+                        backgroundColor: '#8b949e'
                     }
                 ]
             },
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { labels: { color: '#9ca3af' } }
+                    legend: { labels: { color: '#8b949e' } }
                 },
                 scales: {
-                    x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
                 }
             }
         });
@@ -917,39 +919,41 @@ class BenchZeroApp {
                 hasAnySlots = true;
 
                 const candidateRows = displayCandidates.map(c => {
-                    const scoreClass = c.score >= 120 ? 'badge-emerald' : c.score >= 80 ? 'badge-solver' : 'badge-count';
+                    const scoreClass = c.score >= 120 ? 'status-dot-green' : c.score >= 80 ? 'status-dot-amber' : 'status-dot-red';
                     const solverBadge = c.isSolverPick
                         ? `<span class="solver-pick-badge"><i class="fa-solid fa-crown"></i> Solver Pick</span>`
                         : `<span class="eligible-badge">Eligible</span>`;
 
                     let acceptBtn = '';
                     if (isSlotFull) {
-                        acceptBtn = `<span class="badge badge-emerald"><i class="fa-solid fa-check"></i> Staffed</span>`;
+                        acceptBtn = `<span class="status-dot-badge status-dot-green"><span class="status-dot-icon"></span>Staffed</span>`;
                     } else if (c.isSolverPick && c.proposalId) {
-                        acceptBtn = `<button class="btn btn-sm btn-success" onclick="app.acceptProposal(${c.proposalId})"><i class="fa-solid fa-check"></i> Accept</button>`;
+                        acceptBtn = `<button class="btn btn-sm btn-success" onclick="app.acceptProposal(${c.proposalId})"><i class="fa-solid fa-check"></i> Accept Proposal</button>`;
                     } else {
-                        acceptBtn = `<button class="btn btn-sm btn-outline" onclick="app.assignDeveloperToSlot(${slot.id}, ${c.devId})"><i class="fa-solid fa-user-plus"></i> Assign</button>`;
+                        acceptBtn = `<button class="btn btn-sm btn-outline" onclick="app.assignDeveloperToSlot(${slot.id}, ${c.devId})"><i class="fa-solid fa-user-plus"></i> Assign Candidate</button>`;
                     }
 
                     const skillMatch = c.totalReqs > 0
-                        ? `<span class="skill-match-chip">${c.matchedSkills}/${c.totalReqs} skills</span>`
+                        ? `<span class="skill-match-chip mono-text">${c.matchedSkills}/${c.totalReqs} skills</span>`
                         : '';
 
+                    const flipAnimClass = (c.isSolverPick && this.isNewSolverRun) ? 'split-flap-in' : '';
+
                     return `
-                        <div class="assignment-candidate-card ${c.isSolverPick ? 'solver-pick-card' : ''}">
+                        <div class="assignment-candidate-card ${c.isSolverPick ? 'solver-pick-card' : ''} ${flipAnimClass}">
                             <div class="candidate-info">
                                 <div class="candidate-avatar ${c.isSolverPick ? 'avatar-solver' : ''}">
                                     <i class="fa-solid fa-user"></i>
                                 </div>
                                 <div>
-                                    <strong>${c.name}</strong>
-                                    <span class="candidate-subtitle">${c.title || ''}</span>
+                                    <strong>${escapeHtml(c.name)}</strong>
+                                    <span class="candidate-subtitle">${escapeHtml(c.title || '')}</span>
                                 </div>
                             </div>
                             <div class="candidate-meta-row">
                                 ${solverBadge}
                                 ${skillMatch}
-                                <span class="badge ${scoreClass}">${c.score.toFixed(1)} Fit</span>
+                                <span class="status-dot-badge ${scoreClass} arrival-score">SCORE: ${c.score.toFixed(1)}</span>
                             </div>
                             ${acceptBtn}
                         </div>
@@ -960,19 +964,19 @@ class BenchZeroApp {
                 const moreText = remainingCount > 0 ? `<div class="more-candidates-hint">+ ${remainingCount} more eligible candidate${remainingCount > 1 ? 's' : ''}</div>` : '';
 
                 const headcountChip = isSlotFull
-                    ? `<span class="badge badge-emerald"><i class="fa-solid fa-circle-check"></i> Staffed (${confirmedCount}/${slot.headcount_needed})</span>`
-                    : `<span class="role-headcount">${confirmedCount}/${slot.headcount_needed} filled (${slot.headcount_needed - confirmedCount} open)</span>`;
+                    ? `<span class="status-dot-badge status-dot-green"><span class="status-dot-icon"></span>Staffed (${confirmedCount}/${slot.headcount_needed})</span>`
+                    : `<span class="role-headcount mono-text">${confirmedCount}/${slot.headcount_needed} filled (${slot.headcount_needed - confirmedCount} open)</span>`;
 
                 roleCardsHtml += `
                     <div class="role-slot-group">
                         <div class="role-slot-header">
                             <i class="fa-solid fa-briefcase"></i>
-                            <strong>${slot.role_title}</strong>
+                            <strong>${escapeHtml(slot.role_title)}</strong>
                             ${headcountChip}
-                            <span class="role-priority-chip">P${slot.priority}</span>
+                            <span class="role-priority-chip mono-text">P${slot.priority}</span>
                         </div>
                         <div class="role-candidates-list">
-                            ${isSlotFull ? `<div style="font-size: 12px; color: var(--emerald); padding: 4px 8px; font-weight: 500;"><i class="fa-solid fa-circle-check"></i> All ${slot.headcount_needed} developer position(s) fully allocated.</div>` : candidateRows}
+                            ${isSlotFull ? `<div style="font-size: 12px; color: var(--green); padding: 4px 8px; font-weight: 500;"><i class="fa-solid fa-circle-check"></i> All ${slot.headcount_needed} developer position(s) fully allocated.</div>` : candidateRows}
                             ${!isSlotFull ? moreText : ''}
                         </div>
                     </div>
@@ -986,10 +990,10 @@ class BenchZeroApp {
                     <summary class="assignment-project-summary">
                         <div class="assignment-project-info">
                             <i class="fa-solid fa-folder-open"></i>
-                            <strong>${proj.name}</strong>
-                            <span class="client-tag">${proj.client}</span>
+                            <strong>${escapeHtml(proj.name)}</strong>
+                            <span class="client-tag">${escapeHtml(proj.client)}</span>
                         </div>
-                        <span class="badge badge-solver">${(proj.slots || []).length} role${(proj.slots || []).length > 1 ? 's' : ''}</span>
+                        <span class="badge badge-solver mono-text">${(proj.slots || []).length} ROLE${(proj.slots || []).length > 1 ? 'S' : ''}</span>
                     </summary>
                     <div class="assignment-candidates-list">
                         ${roleCardsHtml}
@@ -1000,13 +1004,16 @@ class BenchZeroApp {
 
         if (!hasAnySlots) {
             container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px 20px;">
-                <i class="fa-solid fa-circle-check" style="font-size: 28px; color: var(--emerald); margin-bottom: 10px; display: block;"></i>
+                <i class="fa-solid fa-circle-check" style="font-size: 28px; color: var(--green); margin-bottom: 10px; display: block;"></i>
                 No open role slots require candidate assignment.
             </div>`;
+            this.isNewSolverRun = false;
             return;
         }
 
         container.innerHTML = html;
+        // Reset flag so routine background polling or tab switches don't re-trigger split-flap
+        this.isNewSolverRun = false;
     }
 
     renderProjectTeamRosters(allocations, proposals) {
