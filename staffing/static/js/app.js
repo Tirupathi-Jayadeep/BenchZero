@@ -298,67 +298,69 @@ class BenchZeroApp {
 
     async cancelAllocation(id) {
         const reason = prompt('Reason for cancelling this allocation (optional):', '');
-        if (reason === null) return; // user hit Cancel on the prompt itself
+        if (reason === null) return;
 
-        try {
-            const res = await fetch(`/api/allocations/${id}/cancel/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason: reason || 'User initiated cancellation' })
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert(`Failed to cancel allocation: ${err.error || res.statusText}`);
-                return;
-            }
-            await this.loadAllData();
-        } catch (err) {
-            console.error('Error cancelling allocation:', err);
-            alert('Network or server error cancelling allocation.');
+        const { ok, data } = await this.safeFetchJson(`/api/allocations/${id}/cancel/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason || 'User initiated cancellation' })
+        });
+
+        if (!ok) {
+            this.showToast(`Cancel Failed: ${data?.error || 'Failed to cancel allocation'}`, 'warning');
+            return;
         }
+
+        this.showToast('Allocation cancelled successfully.', 'info');
+        await this.loadAllData();
     }
 
     async fetchSolverRuns() {
-        const res = await fetch('/api/solver-runs/');
-        const data = await res.json();
-        const runs = data.results || data;
-        if (runs && runs.length > 0) {
-            this.solverData = runs[0]; // latest run
-            this.renderDashboardMetrics(this.solverData);
-            this.renderWorkbenchComparison(this.solverData);
+        const { ok, data } = await this.safeFetchJson('/api/solver-runs/');
+        if (ok && data) {
+            const runs = data.results || data;
+            if (runs && Array.isArray(runs) && runs.length > 0) {
+                this.solverData = runs[0];
+                this.renderDashboardMetrics(this.solverData);
+                this.renderWorkbenchComparison(this.solverData);
+            }
         }
     }
 
     async fetchProposals() {
-        const res = await fetch('/api/proposals/');
-        const data = await res.json();
-        this.proposals = data.results || data;
-        this.renderProposals(this.proposals);
-        this.renderCandidateAssignments(this.proposals);
-        this.renderProjectTeamRosters(this.allocations, this.proposals);
+        const { ok, data } = await this.safeFetchJson('/api/proposals/');
+        if (ok && data) {
+            this.proposals = data.results || data || [];
+            this.renderProposals(this.proposals);
+            this.renderCandidateAssignments(this.proposals);
+            this.renderProjectTeamRosters(this.allocations, this.proposals);
+        }
     }
 
     async fetchConfirmedAllocations() {
-        const res = await fetch('/api/allocations/');
-        const data = await res.json();
-        this.allocations = data.results || data;
-        this.renderConfirmedAllocations(this.allocations);
-        this.renderProjectTeamRosters(this.allocations, this.proposals);
+        const { ok, data } = await this.safeFetchJson('/api/allocations/');
+        if (ok && data) {
+            this.allocations = data.results || data || [];
+            this.renderConfirmedAllocations(this.allocations);
+            this.renderProjectTeamRosters(this.allocations, this.proposals);
+        }
     }
 
     async fetchDevelopers() {
-        const res = await fetch('/api/developers/');
-        const data = await res.json();
-        this.developers = data.results || data;
-        this.renderDeveloperMatrix(this.developers);
+        const { ok, data } = await this.safeFetchJson('/api/developers/');
+        if (ok && data) {
+            this.developers = data.results || data || [];
+            this.renderDeveloperMatrix(this.developers);
+        }
     }
 
     async fetchProjects() {
-        const res = await fetch('/api/projects/');
-        const data = await res.json();
-        this.projects = data.results || data;
-        this.renderSlotMatrix(this.projects);
-        this.populateSlotProjectDropdown(this.projects);
+        const { ok, data } = await this.safeFetchJson('/api/projects/');
+        if (ok && data) {
+            this.projects = data.results || data || [];
+            this.renderSlotMatrix(this.projects);
+            this.populateSlotProjectDropdown(this.projects);
+        }
     }
 
     isDateInRange(date, start, end) {
@@ -606,7 +608,7 @@ class BenchZeroApp {
         const runComparison = document.getElementById('check-comparison')?.checked ?? true;
 
         try {
-            const res = await fetch('/api/solver-runs/run/', {
+            const { ok, data } = await this.safeFetchJson('/api/solver-runs/run/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -616,7 +618,15 @@ class BenchZeroApp {
                 })
             });
 
-            const data = await res.json();
+            if (!ok) {
+                this.showToast(`Solver Run Notice: ${data.error || 'Failed to run solver'}`, 'warning');
+                if (btn) {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+                return;
+            }
+
             this.solverData = data;
             this.isNewSolverRun = true;
 
@@ -637,7 +647,7 @@ class BenchZeroApp {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             }
-            alert('Failed to execute CP-SAT solver run.');
+            this.showToast('Failed to execute CP-SAT solver run.', 'warning');
         }
     }
 
@@ -1203,28 +1213,83 @@ class BenchZeroApp {
     }
 
     async acceptProposal(id) {
-        try {
-            const res = await fetch(`/api/proposals/${id}/accept/`, { method: 'POST' });
-            const data = await res.json();
-            if (res.status === 409) {
-                this.showToast(`Conflict Warning: ${data.error || 'Developer is already committed to an overlapping allocation.'}`, 'warning');
-            } else if (res.ok) {
-                this.showToast('Candidate assignment confirmed!', 'success');
-            } else {
-                this.showToast(data.error || 'Failed to accept proposal.', 'warning');
-            }
-            await this.loadAllData();
-        } catch (err) {
-            console.error('Failed to accept proposal:', err);
-            this.showToast('Network error accepting proposal.', 'warning');
+        const { ok, status, data } = await this.safeFetchJson(`/api/proposals/${id}/accept/`, { method: 'POST' });
+        if (status === 409) {
+            this.showToast(`Conflict Warning: ${data?.error || 'Developer is already committed to an overlapping allocation.'}`, 'warning');
+        } else if (ok) {
+            this.showToast('Candidate assignment confirmed!', 'success');
+        } else {
+            this.showToast(data?.error || 'Failed to accept proposal.', 'warning');
         }
+        await this.loadAllData();
+    }
+
+    showToast(message, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.className = 'toast-container';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `toast-item toast-${type}`;
+        const icon = type === 'success' ? 'fa-circle-check' : type === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-info';
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(message)}</span>`;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('toast-fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    dismissUploadAlert() {
+        const container = document.getElementById('upload-results-container');
+        if (container) container.innerHTML = '';
+    }
+
+    downloadSampleFile(type) {
+        let content = '';
+        let filename = '';
+        let mimeType = 'text/plain';
+
+        if (type === 'developers' || type === 'developer') {
+            filename = 'sample_developers.csv';
+            mimeType = 'text/csv';
+            content = `name,email,title,hourly_cost,max_weekly_hours,skills\n"Sarah Jenkins","sarah.jenkins@company.com","Senior Full Stack Architect",95,40,"Python:5, Django:5, React:4"\n"Michael Chang","michael.chang@company.com","Lead Data Engineer",85,40,"Python:5, PostgreSQL:4, Spark:3"`;
+        } else if (type === 'projects' || type === 'project') {
+            filename = 'sample_projects.csv';
+            mimeType = 'text/csv';
+            content = `name,client,priority,budget,description,role_title,start_date,end_date,headcount_needed,required_skills\n"NextGen Cloud Migration","Enterprise Corp",5,150000,"Migrate legacy stack to Kubernetes","Cloud DevOps Engineer","2026-09-01","2026-12-31",2,"Kubernetes:4, Docker:4, AWS:3"`;
+        } else {
+            filename = 'sample_data.json';
+            mimeType = 'application/json';
+            content = JSON.stringify({
+                developers: [
+                    { name: "Sarah Jenkins", email: "sarah.j@company.com", title: "Senior Architect", hourly_cost: 95, skills: [{ name: "Python", level: 5 }] }
+                ]
+            }, null, 2);
+        }
+
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     async assignDeveloperToSlot(slotId, devId, startDate, endDate, weeklyHours) {
         if (!startDate || !endDate) {
             (this.projects || []).forEach(p => {
                 (p.slots || []).forEach(s => {
-                    if (s.id === slotId) {
+                    if (s.id == slotId) {
                         startDate = s.start_date;
                         endDate = s.end_date;
                         weeklyHours = s.weekly_hours_required || 40;
@@ -1274,9 +1339,11 @@ class BenchZeroApp {
     async rejectProposal(id) {
         try {
             await fetch(`/api/proposals/${id}/reject/`, { method: 'POST' });
+            this.showToast('Proposal rejected.', 'info');
             await this.loadAllData();
         } catch (err) {
             console.error('Failed to reject proposal:', err);
+            this.showToast('Failed to reject proposal.', 'warning');
         }
     }
 
