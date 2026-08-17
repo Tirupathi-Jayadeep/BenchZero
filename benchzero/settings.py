@@ -13,8 +13,8 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# Defaults to True for secure deployment. Set REQUIRE_AUTH_FOR_WRITES=False via .env.demo
-# only when running zero-config local interactive demo.
+# Defaults to True for secure deployment. Set REQUIRE_AUTH_FOR_WRITES=False via .env
+# when running zero-config local interactive demo.
 REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'True').lower() in ('true', '1', 't')
 
 if not DEBUG:

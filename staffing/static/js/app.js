@@ -57,7 +57,10 @@ class BenchZeroApp {
             }
             
             if (res.status === 403 || res.status === 401) {
-                const msg = (data && (data.detail || data.error)) || 'Authentication required for write operations.';
+                const rawMsg = data && (data.detail || data.error);
+                const msg = (rawMsg && !rawMsg.includes('Authentication credentials'))
+                    ? rawMsg
+                    : 'Please log in as a staff user or enable local demo mode.';
                 return { ok: false, status: res.status, data: { error: `Permission Denied: ${msg}` } };
             }
 

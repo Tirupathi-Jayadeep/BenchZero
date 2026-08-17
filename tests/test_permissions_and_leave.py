@@ -17,6 +17,7 @@ class TestAuthToggle(TestCase):
         res = self.client.post('/api/skills/', {'name': 'Anon Skill', 'category': 'backend'}, format='json')
         assert res.status_code == 201
 
+    @override_settings(REQUIRE_AUTH_FOR_WRITES=True)
     def test_anonymous_write_blocked_by_default(self):
         res = self.client.post('/api/skills/', {'name': 'Blocked Skill Default', 'category': 'backend'}, format='json')
         assert res.status_code in (401, 403)
