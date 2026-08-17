@@ -8,6 +8,13 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function extractArray(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.results)) return data.results;
+    return [];
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new BenchZeroApp();
 });
@@ -35,6 +42,30 @@ class BenchZeroApp {
         this.bindTabNavigation();
         this.bindEvents();
         await this.loadAllData();
+    }
+
+    async safeFetchJson(url, options = {}) {
+        try {
+            const res = await fetch(url, options);
+            let data = null;
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                data = await res.json().catch(() => null);
+            } else {
+                const text = await res.text().catch(() => '');
+                data = { error: text || res.statusText };
+            }
+            
+            if (res.status === 403 || res.status === 401) {
+                const msg = (data && (data.detail || data.error)) || 'Authentication required for write operations.';
+                return { ok: false, status: res.status, data: { error: `Permission Denied: ${msg}` } };
+            }
+
+            return { ok: res.ok, status: res.status, data };
+        } catch (err) {
+            console.error(`Fetch error for ${url}:`, err);
+            return { ok: false, status: 0, data: { error: 'Network connection failed.' } };
+        }
     }
 
     bindTabNavigation() {
@@ -318,8 +349,8 @@ class BenchZeroApp {
     async fetchSolverRuns() {
         const { ok, data } = await this.safeFetchJson('/api/solver-runs/');
         if (ok && data) {
-            const runs = data.results || data;
-            if (runs && Array.isArray(runs) && runs.length > 0) {
+            const runs = extractArray(data);
+            if (runs.length > 0) {
                 this.solverData = runs[0];
                 this.renderDashboardMetrics(this.solverData);
                 this.renderWorkbenchComparison(this.solverData);
@@ -330,7 +361,7 @@ class BenchZeroApp {
     async fetchProposals() {
         const { ok, data } = await this.safeFetchJson('/api/proposals/');
         if (ok && data) {
-            this.proposals = data.results || data || [];
+            this.proposals = extractArray(data);
             this.renderProposals(this.proposals);
             this.renderCandidateAssignments(this.proposals);
             this.renderProjectTeamRosters(this.allocations, this.proposals);
@@ -340,7 +371,7 @@ class BenchZeroApp {
     async fetchConfirmedAllocations() {
         const { ok, data } = await this.safeFetchJson('/api/allocations/');
         if (ok && data) {
-            this.allocations = data.results || data || [];
+            this.allocations = extractArray(data);
             this.renderConfirmedAllocations(this.allocations);
             this.renderProjectTeamRosters(this.allocations, this.proposals);
         }
@@ -349,7 +380,7 @@ class BenchZeroApp {
     async fetchDevelopers() {
         const { ok, data } = await this.safeFetchJson('/api/developers/');
         if (ok && data) {
-            this.developers = data.results || data || [];
+            this.developers = extractArray(data);
             this.renderDeveloperMatrix(this.developers);
         }
     }
@@ -357,7 +388,7 @@ class BenchZeroApp {
     async fetchProjects() {
         const { ok, data } = await this.safeFetchJson('/api/projects/');
         if (ok && data) {
-            this.projects = data.results || data || [];
+            this.projects = extractArray(data);
             this.renderSlotMatrix(this.projects);
             this.populateSlotProjectDropdown(this.projects);
         }
