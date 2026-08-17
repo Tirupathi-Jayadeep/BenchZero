@@ -89,6 +89,9 @@ For any eligible candidate pair of Developer $d$ and Project Slot $s$, BenchZero
   - `minimize_bench`: Maximizes total staff utilization.
   - `minimize_cost`: Optimizes budget efficiency.
 
+> **Note on Mandatory vs. Optional Skill Requirements**: Skill requirements configured with `is_mandatory=False` are non-restrictive during candidate eligibility filtering. They do not disqualify candidates; instead, they are weighted in the multi-objective fit score calculation to reward and prioritize candidates who possess those optional skills.
+
+
 ### 2. Decoupled Human-in-the-Loop Pipeline
 Algorithmic proposals (`AllocationProposal`) are strictly decoupled from official database bookings (`Allocation`). When the optimization engine runs:
 1. Pending proposals from previous runs are automatically marked as `expired`.
@@ -191,22 +194,20 @@ pytest
 
 ---
 
-### 3. Production Authentication Configuration
+### 3. Authentication & Role Permissions Configuration
 
-To enable write authentication before deploying beyond localhost:
+By default, `.env.example` sets `REQUIRE_AUTH_FOR_WRITES=True` (secure default):
 
 ```bash
-# Set in .env or shell environment
-export REQUIRE_AUTH_FOR_WRITES=True
-
-# Create superuser account for management
+# Create superuser / staff account for Project Managers
 python manage.py createsuperuser
 ```
 
 When `REQUIRE_AUTH_FOR_WRITES=True`:
 - `GET` requests remain open for public dashboard viewing.
-- `POST`, `PUT`, `PATCH`, `DELETE` requests require an authenticated user.
-- Leave approvals (`/api/leaves/{id}/approve/`) require staff permissions.
+- Mutating actions (creating/cancelling allocations, running solver optimization, bulk-accepting proposals, managing projects/slots, and approving leaves) are strictly gated to authenticated staff users (Project Managers / Admins).
+- For local zero-config interactive testing without login, set `REQUIRE_AUTH_FOR_WRITES=False` in `.env`.
+
 
 ---
 

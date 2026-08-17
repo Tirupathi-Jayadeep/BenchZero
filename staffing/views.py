@@ -2,8 +2,10 @@ import json
 import csv
 import io
 import logging
+import threading
 from datetime import datetime, date, timedelta
 from django.db import transaction
+from django.db.models import ProtectedError
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.views.generic import TemplateView
@@ -92,19 +94,32 @@ class SkillViewSet(viewsets.ModelViewSet):
     queryset = Skill.objects.all().order_by('category', 'name')
     serializer_class = SkillSerializer
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [DemoAwareAdminPermission()]
+        return super().get_permissions()
+
 
 class DeveloperViewSet(viewsets.ModelViewSet):
     queryset = Developer.objects.all().prefetch_related('developer_skills__skill', 'leaves').order_by('name')
     serializer_class = DeveloperSerializer
 
     def get_permissions(self):
-        # Bulk upload can create/overwrite the entire workforce in one call --
-        # a much larger blast radius than a single-record write -- so once
-        # REQUIRE_AUTH_FOR_WRITES is on, require staff, not just any logged-in
-        # user. Reads and single-record writes keep the normal policy.
-        if self.action == 'upload_developers':
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'add_skill', 'upload_developers'):
             return [DemoAwareAdminPermission()]
         return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    'error': "Cannot delete Developer because active or historical allocations refer to it. "
+                             "Cancel or clear related allocations first."
+                },
+                status=status.HTTP_409_CONFLICT
+            )
 
     @action(detail=True, methods=['post'], url_path='add-skill')
     def add_skill(self, request, pk=None):
@@ -336,9 +351,21 @@ class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
 
     def get_permissions(self):
-        if self.action == 'upload_projects':
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'upload_projects'):
             return [DemoAwareAdminPermission()]
         return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    'error': "Cannot delete Project because active or historical allocations refer to its project slots. "
+                             "Cancel or clear related allocations first."
+                },
+                status=status.HTTP_409_CONFLICT
+            )
 
     @action(detail=False, methods=['post'], url_path='upload')
     def upload_projects(self, request):
@@ -617,6 +644,23 @@ class ProjectSlotViewSet(viewsets.ModelViewSet):
     queryset = ProjectSlot.objects.all().select_related('project').prefetch_related('skill_requirements__skill').order_by('-priority')
     serializer_class = ProjectSlotSerializer
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'add_requirement'):
+            return [DemoAwareAdminPermission()]
+        return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    'error': "Cannot delete ProjectSlot because active or historical allocations refer to it. "
+                             "Cancel or clear related allocations first."
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
     @action(detail=True, methods=['post'], url_path='add-requirement')
     def add_requirement(self, request, pk=None):
         slot = self.get_object()
@@ -642,6 +686,11 @@ class ProjectSlotViewSet(viewsets.ModelViewSet):
 class AllocationViewSet(viewsets.ModelViewSet):
     queryset = Allocation.objects.all().select_related('developer', 'project_slot__project').prefetch_related('audit_logs').order_by('-created_at')
     serializer_class = AllocationSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'cancel_allocation'):
+            return [DemoAwareAdminPermission()]
+        return super().get_permissions()
 
     def perform_create(self, serializer):
         allocation = serializer.save()
@@ -748,24 +797,40 @@ class AllocationViewSet(viewsets.ModelViewSet):
         return Response({'days': days, 'trend': trend})
 
 
+_solver_lock = threading.Lock()
+
+
 class SolverRunViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SolverRun.objects.all().prefetch_related('proposals__developer', 'proposals__project_slot__project').order_by('-timestamp')
     serializer_class = SolverRunSerializer
 
+    def get_permissions(self):
+        if self.action == 'run_solver':
+            return [DemoAwareAdminPermission()]
+        return super().get_permissions()
+
     @action(detail=False, methods=['post'], url_path='run')
     def run_solver(self, request):
-        objective = request.data.get('objective', 'balanced')
-        raw_time_limit = request.data.get('time_limit', 10.0)
+        if not _solver_lock.acquire(blocking=False):
+            return Response(
+                {
+                    'error': "A solver optimization run is currently in progress. "
+                             "Please wait for the active run to complete."
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
         try:
-            time_limit = float(raw_time_limit)
-        except (ValueError, TypeError):
-            time_limit = 10.0
+            objective = request.data.get('objective', 'balanced')
+            raw_time_limit = request.data.get('time_limit', 10.0)
+            try:
+                time_limit = float(raw_time_limit)
+            except (ValueError, TypeError):
+                time_limit = 10.0
 
-        # Server-side clamp max 60s
-        time_limit = min(max(time_limit, 0.5), 60.0)
-        run_comparison = request.data.get('run_comparison', True)
+            # Server-side clamp max 60s
+            time_limit = min(max(time_limit, 0.5), 60.0)
+            run_comparison = request.data.get('run_comparison', True)
 
-        try:
             result = run_optimization_engine(
                 objective=objective,
                 time_limit_seconds=time_limit,
@@ -776,11 +841,18 @@ class SolverRunViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            _solver_lock.release()
 
 
 class AllocationProposalViewSet(viewsets.ModelViewSet):
     queryset = AllocationProposal.objects.all().select_related('developer', 'project_slot__project').order_by('-created_at')
     serializer_class = AllocationProposalSerializer
+
+    def get_permissions(self):
+        if self.action in ('accept_proposal', 'reject_proposal', 'bulk_accept', 'create', 'update', 'partial_update', 'destroy'):
+            return [DemoAwareAdminPermission()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'], url_path='accept')
     def accept_proposal(self, request, pk=None):

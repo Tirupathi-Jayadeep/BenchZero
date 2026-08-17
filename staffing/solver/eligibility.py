@@ -21,12 +21,16 @@ def is_developer_eligible(developer, slot, existing_allocations=None, leaves=Non
     3. Must NOT exceed max_weekly_hours capacity with existing confirmed allocations.
     """
     # 1. Skill prerequisite filter
+    # NOTE: Optional skill requirements (is_mandatory=False) are deliberately unenforced
+    # during eligibility filtering. They do not disqualify candidates; instead, they
+    # are weighted in fit_score.py to boost candidate ranking during optimization.
     dev_skill_map = {ds.skill_id: ds.proficiency_level for ds in developer.developer_skills.all()}
     for req in slot.skill_requirements.all():
         if req.is_mandatory:
             dev_level = dev_skill_map.get(req.skill_id, 0)
             if dev_level < req.min_proficiency:
                 return False
+
 
     # 2. Leave availability filter
     if leaves is not None:

@@ -37,10 +37,30 @@ class TestAuthToggle(TestCase):
 
     @override_settings(REQUIRE_AUTH_FOR_WRITES=True)
     def test_authenticated_write_allowed_when_auth_required(self):
-        user = User.objects.create_user('writer', password='pw')
+        user = User.objects.create_user('writer', password='pw', is_staff=True)
         self.client.force_authenticate(user=user)
         res = self.client.post('/api/skills/', {'name': 'Authed Skill', 'category': 'backend'}, format='json')
         assert res.status_code == 201
+
+    @override_settings(REQUIRE_AUTH_FOR_WRITES=True)
+    def test_regular_user_blocked_from_solver_and_bulk_accept(self):
+        regular = User.objects.create_user('regular_user', password='pw', is_staff=False)
+        self.client.force_authenticate(user=regular)
+
+        res_solver = self.client.post('/api/solver-runs/run/', {'time_limit': 1.0}, format='json')
+        assert res_solver.status_code == 403
+
+        res_bulk = self.client.post('/api/proposals/bulk-accept/', {'proposal_ids': []}, format='json')
+        assert res_bulk.status_code == 403
+
+    @override_settings(REQUIRE_AUTH_FOR_WRITES=True)
+    def test_staff_user_allowed_on_solver_run(self):
+        staff = User.objects.create_user('staff_pm', password='pw', is_staff=True)
+        self.client.force_authenticate(user=staff)
+
+        res_solver = self.client.post('/api/solver-runs/run/', {'time_limit': 1.0}, format='json')
+        assert res_solver.status_code == 200
+
 
 
 @override_settings(REQUIRE_AUTH_FOR_WRITES=False)

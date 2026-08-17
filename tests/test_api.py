@@ -196,3 +196,58 @@ class TestStaffingAPI(TestCase):
         res = self.client.get('/api/allocations/bench-trend/?days=9999')
         assert res.status_code == 200
         assert len(res.data['trend']) == 180
+
+    def test_delete_developer_with_allocation_returns_409(self):
+        Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date="2026-08-01",
+            end_date="2026-09-01",
+            allocated_hours=40,
+            status='confirmed'
+        )
+        res = self.client.delete(f'/api/developers/{self.dev.id}/')
+        assert res.status_code == 409
+        assert "cannot delete developer" in res.data['error'].lower()
+
+    def test_delete_project_with_allocation_returns_409(self):
+        Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date="2026-08-01",
+            end_date="2026-09-01",
+            allocated_hours=40,
+            status='confirmed'
+        )
+        res = self.client.delete(f'/api/projects/{self.project.id}/')
+        assert res.status_code == 409
+        assert "cannot delete project" in res.data['error'].lower()
+
+    def test_delete_project_slot_with_allocation_returns_409(self):
+        Allocation.objects.create(
+            developer=self.dev,
+            project_slot=self.slot,
+            start_date="2026-08-01",
+            end_date="2026-09-01",
+            allocated_hours=40,
+            status='confirmed'
+        )
+        res = self.client.delete(f'/api/slots/{self.slot.id}/')
+        assert res.status_code == 409
+        assert "cannot delete projectslot" in res.data['error'].lower()
+
+
+    def test_solver_concurrency_lock_returns_429(self):
+        from staffing.views import _solver_lock
+        locked = _solver_lock.acquire(blocking=False)
+        try:
+            res = self.client.post('/api/solver-runs/run/', {
+                'objective': 'balanced',
+                'time_limit': 1.0,
+            }, format='json')
+            assert res.status_code == 429
+            assert "in progress" in res.data['error'].lower()
+        finally:
+            if locked:
+                _solver_lock.release()
+

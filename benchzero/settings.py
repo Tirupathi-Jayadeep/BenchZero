@@ -100,6 +100,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'staffing.permissions.DemoAwarePermission',
     ],
+    'EXCEPTION_HANDLER': 'staffing.exceptions.custom_exception_handler',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_PARSER_CLASSES': [
@@ -108,3 +109,4 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
     ]
 }
+
