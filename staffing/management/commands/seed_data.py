@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
 from staffing.models import (
     Skill, Developer, DeveloperSkill, Project, ProjectSlot, 
     SlotSkillRequirement, Allocation, SolverRun, AllocationProposal
@@ -11,6 +12,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("Seeding BenchZero database..."))
+
+        # Create staff admin user if not existing
+        if not User.objects.filter(username='admin').exists():
+            User.objects.create_superuser('admin', 'admin@benchzero.io', 'adminpassword')
+            self.stdout.write(self.style.SUCCESS("Created staff user 'admin' (password: 'adminpassword')"))
 
         # Clear existing data
         AllocationProposal.objects.all().delete()

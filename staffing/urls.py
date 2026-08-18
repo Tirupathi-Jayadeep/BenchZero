@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DashboardView, SkillViewSet, DeveloperViewSet, ProjectViewSet,
     ProjectSlotViewSet, AllocationViewSet, SolverRunViewSet, AllocationProposalViewSet,
-    DeveloperLeaveViewSet
+    DeveloperLeaveViewSet, AuthStatusView, LoginView, LogoutView
 )
 
 router = DefaultRouter()
@@ -18,5 +18,8 @@ router.register(r'proposals', AllocationProposalViewSet, basename='proposal')
 
 urlpatterns = [
     path('', DashboardView.as_view(), name='dashboard'),
+    path('api/auth/status/', AuthStatusView.as_view(), name='auth-status'),
+    path('api/auth/login/', LoginView.as_view(), name='auth-login'),
+    path('api/auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('api/', include(router.urls)),
 ]

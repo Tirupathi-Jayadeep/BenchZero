@@ -13,9 +13,9 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# Defaults to True for secure deployment. Set REQUIRE_AUTH_FOR_WRITES=False via .env
-# when running zero-config local interactive demo.
-REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'True').lower() in ('true', '1', 't')
+# Defaults to False for zero-config local interactive demo.
+# Set REQUIRE_AUTH_FOR_WRITES=True via env in production for strict authentication.
+REQUIRE_AUTH_FOR_WRITES = os.getenv('REQUIRE_AUTH_FOR_WRITES', 'False').lower() in ('true', '1', 't')
 
 if not DEBUG:
     from django.core.exceptions import ImproperlyConfigured

@@ -87,6 +87,54 @@ def _parse_slot_skills_string(skills_str):
     return result
 
 
+from django.contrib.auth import authenticate, login as django_login, logout as django_logout
+from rest_framework.views import APIView
+
+
+class AuthStatusView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            'is_authenticated': request.user.is_authenticated,
+            'username': request.user.username if request.user.is_authenticated else '',
+            'is_staff': request.user.is_staff if request.user.is_authenticated else False,
+            'require_auth_for_writes': getattr(settings, 'REQUIRE_AUTH_FOR_WRITES', False)
+        })
+
+
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        username = request.data.get('username', '').strip()
+        password = request.data.get('password', '').strip()
+
+        if not username or not password:
+            return Response({'error': 'Username and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            django_login(request, user)
+            return Response({
+                'message': 'Login successful',
+                'user': {
+                    'username': user.username,
+                    'is_staff': user.is_staff
+                }
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Invalid username or password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        django_logout(request)
+        return Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
+
+
 class DashboardView(TemplateView):
     template_name = 'index.html'
 

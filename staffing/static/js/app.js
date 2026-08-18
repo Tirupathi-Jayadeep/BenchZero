@@ -28,6 +28,7 @@ class BenchZeroApp {
         this.developers = [];
         this.projects = [];
         this.isNewSolverRun = false;
+        this.authState = { is_authenticated: false, username: '', is_staff: false, require_auth_for_writes: false };
 
         this.benchmarkChart = null;
         this.dashBenchmarkChart = null;
@@ -41,6 +42,83 @@ class BenchZeroApp {
     async init() {
         this.bindTabNavigation();
         this.bindEvents();
+        await this.fetchAuthStatus();
+        await this.loadAllData();
+    }
+
+    async fetchAuthStatus() {
+        const { ok, data } = await this.safeFetchJson('/api/auth/status/');
+        if (ok && data) {
+            this.authState = data;
+            this.renderAuthStatus();
+        }
+    }
+
+    renderAuthStatus() {
+        const container = document.getElementById('auth-status-container');
+        if (!container) return;
+
+        if (this.authState.is_authenticated) {
+            container.innerHTML = `
+                <span class="badge badge-emerald" style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px;">
+                    <i class="fa-solid fa-user-check"></i> ${escapeHtml(this.authState.username)} ${this.authState.is_staff ? '(Staff)' : ''}
+                </span>
+                <button type="button" class="btn btn-sm btn-outline" onclick="app.logoutUser()" title="Log out">
+                    <i class="fa-solid fa-right-from-bracket"></i> Logout
+                </button>
+            `;
+        } else if (this.authState.require_auth_for_writes) {
+            container.innerHTML = `
+                <span class="badge badge-warning" style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px;">
+                    <i class="fa-solid fa-lock"></i> Staff Auth Required
+                </span>
+                <button type="button" class="btn btn-sm btn-primary" onclick="app.showLoginModal()">
+                    <i class="fa-solid fa-right-to-bracket"></i> Staff Login
+                </button>
+            `;
+        } else {
+            container.innerHTML = `
+                <span class="badge badge-count" style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px; background: rgba(255,255,255,0.06); color: var(--text-muted);">
+                    <i class="fa-solid fa-unlock"></i> Local Demo Mode
+                </span>
+                <button type="button" class="btn btn-sm btn-outline" onclick="app.showLoginModal()">
+                    Staff Login
+                </button>
+            `;
+        }
+    }
+
+    showLoginModal() {
+        const modal = document.getElementById('login-modal');
+        if (modal) modal.style.display = 'flex';
+    }
+
+    hideLoginModal() {
+        const modal = document.getElementById('login-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    async loginUser(username, password) {
+        const { ok, data } = await this.safeFetchJson('/api/auth/login/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (ok) {
+            this.hideLoginModal();
+            this.showToast(`Logged in successfully as ${data.user.username}!`, 'success');
+            await this.fetchAuthStatus();
+            await this.loadAllData();
+        } else {
+            this.showToast(data?.error || 'Invalid credentials.', 'warning');
+        }
+    }
+
+    async logoutUser() {
+        await this.safeFetchJson('/api/auth/logout/', { method: 'POST' });
+        this.showToast('Logged out.', 'info');
+        await this.fetchAuthStatus();
         await this.loadAllData();
     }
 
@@ -57,10 +135,11 @@ class BenchZeroApp {
             }
             
             if (res.status === 403 || res.status === 401) {
+                this.showLoginModal();
                 const rawMsg = data && (data.detail || data.error);
                 const msg = (rawMsg && !rawMsg.includes('Authentication credentials'))
                     ? rawMsg
-                    : 'Please log in as a staff user or enable local demo mode.';
+                    : 'Staff login required for write operations. Please log in.';
                 return { ok: false, status: res.status, data: { error: `Permission Denied: ${msg}` } };
             }
 
@@ -142,6 +221,14 @@ class BenchZeroApp {
         document.getElementById('form-add-slot')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.addSlot();
+        });
+
+        // Form login
+        document.getElementById('form-login')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const u = document.getElementById('login-username').value;
+            const p = document.getElementById('login-password').value;
+            this.loginUser(u, p);
         });
 
         // Role search & filter listeners
