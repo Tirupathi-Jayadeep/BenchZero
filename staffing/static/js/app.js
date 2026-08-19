@@ -47,6 +47,15 @@ class BenchZeroApp {
         await this.loadAllData();
     }
 
+    getChartThemeColors() {
+        const isLight = document.body.classList.contains('theme-light');
+        return {
+            textColor: isLight ? '#334155' : '#8b949e',
+            gridColor: isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)',
+            isLight
+        };
+    }
+
     initTheme() {
         const savedTheme = localStorage.getItem('benchzero-theme') || 'dark';
         if (savedTheme === 'light') {
@@ -64,9 +73,21 @@ class BenchZeroApp {
         if (icon) {
             icon.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
         }
-        // Re-render active charts to pick up color palette adjustments
-        if (this.dashBenchmarkChart) this.renderDashboardMetrics(this.solverData);
+        // Re-render active charts and views to adapt theme colors
+        if (this.solverData) {
+            this.renderBenchmarkMetrics(this.solverData);
+            if (this.solverData.benchmarks) {
+                const b = this.solverData.benchmarks;
+                this.renderBenchmarkChart(b.cpsat, b.greedy, b.scipy);
+            }
+        }
+        if (this.benchTrendData) {
+            this.renderDashboardBenchTrend(this.benchTrendData);
+        }
+        this.renderWorkforceAndProjectStatus();
+        this.renderRoleWorkforceDashboard();
     }
+
 
     async fetchAuthStatus() {
         const { ok, data } = await this.safeFetchJson('/api/auth/status/');
@@ -408,6 +429,8 @@ class BenchZeroApp {
             return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         });
 
+        const { textColor, gridColor } = this.getChartThemeColors();
+
         this.benchTrendChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
@@ -430,11 +453,11 @@ class BenchZeroApp {
                     y: {
                         beginAtZero: true,
                         max: 100,
-                        ticks: { color: '#9ca3af', callback: v => v + '%' },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
+                        ticks: { color: textColor, callback: v => v + '%' },
+                        grid: { color: gridColor }
                     },
                     x: {
-                        ticks: { color: '#9ca3af', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                        ticks: { color: textColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
                         grid: { display: false }
                     }
                 },
@@ -451,6 +474,7 @@ class BenchZeroApp {
                 }
             }
         });
+
     }
 
     renderActivityLog() {
@@ -1035,6 +1059,8 @@ class BenchZeroApp {
         const scipySlots = scipy.assignments ? scipy.assignments.length : 0;
         const greedySlots = greedy.assignments ? greedy.assignments.length : 0;
 
+        const { textColor, gridColor } = this.getChartThemeColors();
+
         this.benchmarkChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -1043,15 +1069,15 @@ class BenchZeroApp {
                     {
                         label: 'Quality Score',
                         data: [cpsatScore, scipyScore, greedyScore],
-                        backgroundColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        backgroundColor: ['#2563eb', '#7c3aed', '#64748b'],
                         yAxisID: 'yScore',
                         order: 2
                     },
                     {
                         label: 'Staffed Slots',
                         data: [cpsatSlots, scipySlots, greedySlots],
-                        backgroundColor: ['rgba(88,166,255,0.35)', 'rgba(188,140,255,0.35)', 'rgba(139,148,158,0.35)'],
-                        borderColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        backgroundColor: ['rgba(37, 99, 235, 0.25)', 'rgba(124, 58, 237, 0.25)', 'rgba(100, 116, 139, 0.25)'],
+                        borderColor: ['#2563eb', '#7c3aed', '#64748b'],
                         borderWidth: 2,
                         yAxisID: 'ySlots',
                         order: 1
@@ -1062,25 +1088,26 @@ class BenchZeroApp {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#8b949e', font: { size: 11 } } }
+                    legend: { labels: { color: textColor, font: { size: 11 } } }
                 },
                 scales: {
-                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: textColor }, grid: { color: gridColor } },
                     yScore: {
                         type: 'linear', position: 'left',
-                        title: { display: true, text: 'Quality Score', color: '#8b949e', font: { size: 11 } },
-                        ticks: { color: '#8b949e' },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
+                        title: { display: true, text: 'Quality Score', color: textColor, font: { size: 11, weight: 'bold' } },
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
                     },
                     ySlots: {
                         type: 'linear', position: 'right',
-                        title: { display: true, text: 'Staffed Slots', color: '#8b949e', font: { size: 11 } },
-                        ticks: { color: '#8b949e', stepSize: 1 },
+                        title: { display: true, text: 'Staffed Slots', color: textColor, font: { size: 11, weight: 'bold' } },
+                        ticks: { color: textColor, stepSize: 1 },
                         grid: { drawOnChartArea: false }
                     }
                 }
             }
         });
+
     }
 
     /**
@@ -2597,6 +2624,8 @@ class BenchZeroApp {
         }
 
         const labels = Object.keys(roleMap);
+        const { textColor, gridColor } = this.getChartThemeColors();
+
         if (labels.length === 0) {
             // Render an empty chart state
             this.roleDistributionChartInstance = new Chart(ctx, {
@@ -2613,8 +2642,8 @@ class BenchZeroApp {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
-                        y: { beginAtZero: true, max: 1, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        x: { ticks: { color: textColor }, grid: { display: false } },
+                        y: { beginAtZero: true, max: 1, ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } }
                     },
                     plugins: {
                         legend: { display: false }
@@ -2658,7 +2687,7 @@ class BenchZeroApp {
                     x: {
                         stacked: true,
                         ticks: {
-                            color: '#9ca3af',
+                            color: textColor,
                             font: { size: 11 },
                             maxRotation: 45,
                             minRotation: 20
@@ -2668,14 +2697,14 @@ class BenchZeroApp {
                     y: {
                         stacked: true,
                         beginAtZero: true,
-                        ticks: { color: '#9ca3af', stepSize: 1 },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
+                        ticks: { color: textColor, stepSize: 1 },
+                        grid: { color: gridColor }
                     }
                 },
                 plugins: {
                     legend: {
                         position: 'top',
-                        labels: { color: '#9ca3af', boxWidth: 12, padding: 12 }
+                        labels: { color: textColor, boxWidth: 12, padding: 12 }
                     },
                     tooltip: {
                         mode: 'index',
@@ -2684,6 +2713,7 @@ class BenchZeroApp {
                 }
             }
         });
+
     }
 
 
