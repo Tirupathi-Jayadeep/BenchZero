@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 from django.db import connection, transaction
 from django.db.models import ProtectedError
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.views.generic import TemplateView

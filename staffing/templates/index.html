@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BenchZero - Operations Dispatch Board</title>
+    <title>BenchZero — Operations Dispatch Board</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9A%A1</text></svg>" type="image/svg+xml">
     
     <!-- Google Fonts: Monospace for numbers/status, Condensed Grotesque for manifest headers -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,6 +31,10 @@
                     <span class="badge badge-solver">DISPATCH BOARD</span>
                 </div>
             </div>
+            <!-- Item 4: Sidebar collapse toggle -->
+            <button class="sidebar-toggle-btn" id="sidebar-toggle" title="Collapse sidebar">
+                <i class="fa-solid fa-angles-left"></i>
+            </button>
 
             <nav class="nav-menu">
                 <button class="nav-item active" data-tab="dashboard">
@@ -64,12 +69,45 @@
         <main class="main-content">
             <!-- Header Bar -->
             <header class="top-header">
-                <div class="header-title">
-                    <h1 id="page-title">DISPATCH BOARD // LIVE MANIFEST</h1>
-                    <p class="subtitle">OR-TOOLS CP-SAT CONSTRAINT SATISFACTION STAFFING ENGINE</p>
+                <div style="display: flex; align-items: center;">
+                    <button class="mobile-menu-btn" id="mobile-menu-btn" title="Open menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="header-title">
+                        <h1 id="page-title">Executive Overview</h1>
+                        <p class="subtitle">OR-TOOLS CP-SAT CONSTRAINT SATISFACTION STAFFING ENGINE</p>
+                    </div>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" style="position: relative;">
                     <div id="auth-status-container" style="display: flex; align-items: center; gap: 10px;"></div>
+
+                    <!-- Item 15: Theme Toggle Button -->
+                    <button class="header-icon-btn" id="theme-toggle-btn" title="Toggle Dark/Light Theme" onclick="app.toggleTheme()">
+                        <i class="fa-solid fa-sun" id="theme-icon"></i>
+                    </button>
+
+                    <!-- Item 14: Notifications Bell & Dropdown -->
+                    <div style="position: relative;">
+                        <button class="header-icon-btn" id="notifications-bell-btn" title="Notifications & Activity" onclick="app.toggleNotificationsDropdown()">
+                            <i class="fa-solid fa-bell"></i>
+                            <span class="notifications-unread-dot" id="notifications-dot"></span>
+                        </button>
+                        <div class="notifications-dropdown-menu" id="notifications-dropdown">
+                            <div class="notifications-dropdown-header">
+                                <span><i class="fa-solid fa-bell"></i> Dispatch Activity & Alerts</span>
+                                <span class="badge badge-solver mono-text" id="notif-count-badge">Live</span>
+                            </div>
+                            <div class="notifications-list" id="notifications-list-container">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Item 13: Solver History Button -->
+                    <button class="btn btn-outline" id="btn-solver-history" onclick="app.showSolverHistoryModal()" title="View Solver Run History">
+                        <i class="fa-solid fa-clock-rotate-left"></i> History
+                    </button>
+
                     <button class="btn btn-primary" id="btn-quick-run">
                         <i class="fa-solid fa-bolt"></i> RUN CP-SAT SOLVER
                     </button>
@@ -476,15 +514,26 @@
                                 <h3><i class="fa-solid fa-chart-column" style="color: var(--primary);"></i> Role Workforce Distribution & Analytics</h3>
                                 <p class="subtitle">Headcount breakdown by developer role showing active project allocations vs bench capacity</p>
                             </div>
-                            <div class="filter-controls-group">
+                            <div class="filter-controls-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <div class="search-input-wrap">
                                     <i class="fa-solid fa-magnifying-glass"></i>
                                     <input type="text" id="role-search-input" class="form-control form-control-sm" placeholder="Filter by developer name or role...">
                                 </div>
-                                <select id="role-status-filter" class="form-control form-control-sm" style="width: 140px;">
+                                <select id="role-status-filter" class="form-control form-control-sm" style="width: 130px;">
                                     <option value="all">All Statuses</option>
                                     <option value="working">Working Only</option>
                                     <option value="bench">Bench Only</option>
+                                </select>
+                                <select id="role-skill-filter" class="form-control form-control-sm" style="width: 140px;">
+                                    <option value="all">All Skills</option>
+                                    <option value="python">Python</option>
+                                    <option value="django">Django</option>
+                                    <option value="react">React / Frontend</option>
+                                    <option value="aws">AWS / Cloud</option>
+                                    <option value="kubernetes">Kubernetes / DevOps</option>
+                                    <option value="go">Go / Microservices</option>
+                                    <option value="pytorch">PyTorch / AI</option>
+                                    <option value="postgresql">PostgreSQL</option>
                                 </select>
                             </div>
                         </div>
@@ -827,6 +876,48 @@ Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,
         </main>
     </div>
 
+    <!-- Item 8: Mobile sidebar overlay -->
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+
+    <!-- Item 10: DEVELOPER PROFILE DETAIL MODAL -->
+    <div id="developer-detail-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-detail-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-id-card"></i> Developer Profile & Allocation History</h3>
+                <button type="button" class="btn-close-modal" onclick="app.hideDeveloperModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" id="developer-detail-modal-body">
+                <!-- Rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Item 11: PROJECT DETAIL MODAL -->
+    <div id="project-detail-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-detail-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-diagram-project"></i> Project Details & Staffing Roster</h3>
+                <button type="button" class="btn-close-modal" onclick="app.hideProjectModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" id="project-detail-modal-body">
+                <!-- Rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Item 13: SOLVER RUN HISTORY MODAL -->
+    <div id="solver-history-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-detail-card" style="max-width: 820px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Optimization Run History & Benchmark Log</h3>
+                <button type="button" class="btn-close-modal" onclick="app.hideSolverHistoryModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" id="solver-history-modal-body">
+                <!-- Rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
     <!-- STAFF LOGIN MODAL -->
     <div id="login-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card">
@@ -861,6 +952,36 @@ Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,
     </div>
 
     {% load static %}
-    <script src="{% static 'js/app.js' %}?v=6.0"></script>
+    <script src="{% static 'js/app.js' %}?v=7.0"></script>
+    <script>
+        // Item 4: Sidebar collapse toggle
+        document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
+            const sidebar = document.querySelector('.sidebar');
+            const icon = document.querySelector('#sidebar-toggle i');
+            sidebar.classList.toggle('collapsed');
+            if (sidebar.classList.contains('collapsed')) {
+                icon.className = 'fa-solid fa-angles-right';
+            } else {
+                icon.className = 'fa-solid fa-angles-left';
+            }
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        });
+        // Restore sidebar state
+        if (localStorage.getItem('sidebarCollapsed') === 'true') {
+            document.querySelector('.sidebar')?.classList.add('collapsed');
+            const icon = document.querySelector('#sidebar-toggle i');
+            if (icon) icon.className = 'fa-solid fa-angles-right';
+        }
+
+        // Item 8: Mobile menu toggle
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+            document.querySelector('.sidebar')?.classList.toggle('mobile-open');
+            document.getElementById('mobile-overlay')?.classList.toggle('visible');
+        });
+        document.getElementById('mobile-overlay')?.addEventListener('click', () => {
+            document.querySelector('.sidebar')?.classList.remove('mobile-open');
+            document.getElementById('mobile-overlay')?.classList.remove('visible');
+        });
+    </script>
 </body>
 </html>

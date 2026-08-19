@@ -9,7 +9,20 @@ from staffing.models import Developer, Skill, Project, ProjectSlot, DeveloperSki
 from staffing.views import MAX_UPLOAD_ROWS
 
 @pytest.mark.django_db
-@override_settings(REQUIRE_AUTH_FOR_WRITES=False)
+@override_settings(REQUIRE_AUTH_FOR_WRITES=False, REST_FRAMEWORK={
+    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
+    'DEFAULT_PERMISSION_CLASSES': ['staffing.permissions.DemoAwarePermission'],
+    'DEFAULT_THROTTLE_CLASSES': [],
+    'DEFAULT_THROTTLE_RATES': {},
+    'EXCEPTION_HANDLER': 'staffing.exceptions.custom_exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ]
+})
 class TestFileUploads(TestCase):
 
     def setUp(self):

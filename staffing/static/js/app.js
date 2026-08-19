@@ -40,10 +40,32 @@ class BenchZeroApp {
     }
 
     async init() {
+        this.initTheme();
         this.bindTabNavigation();
         this.bindEvents();
         await this.fetchAuthStatus();
         await this.loadAllData();
+    }
+
+    initTheme() {
+        const savedTheme = localStorage.getItem('benchzero-theme') || 'dark';
+        if (savedTheme === 'light') {
+            document.body.classList.add('theme-light');
+            const icon = document.getElementById('theme-icon');
+            if (icon) icon.className = 'fa-solid fa-moon';
+        }
+    }
+
+    toggleTheme() {
+        document.body.classList.toggle('theme-light');
+        const isLight = document.body.classList.contains('theme-light');
+        localStorage.setItem('benchzero-theme', isLight ? 'light' : 'dark');
+        const icon = document.getElementById('theme-icon');
+        if (icon) {
+            icon.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+        // Re-render active charts to pick up color palette adjustments
+        if (this.dashBenchmarkChart) this.renderDashboardMetrics(this.solverData);
     }
 
     async fetchAuthStatus() {
@@ -181,6 +203,9 @@ class BenchZeroApp {
         const titleEl = document.getElementById('page-title');
         if (titleEl) titleEl.textContent = titleMap[tabId] || 'BenchZero';
 
+        // Item 9: Dynamic browser tab title
+        document.title = `BenchZero — ${titleMap[tabId] || 'Dispatch Board'}`;
+
         if (tabId === 'roles-dashboard') {
             this.renderRoleWorkforceDashboard();
         }
@@ -238,6 +263,18 @@ class BenchZeroApp {
         document.getElementById('role-status-filter')?.addEventListener('change', () => {
             this.renderRoleWorkforceDashboard();
         });
+        document.getElementById('role-skill-filter')?.addEventListener('change', () => {
+            this.renderRoleWorkforceDashboard();
+        });
+
+        // Close notifications dropdown on outside click
+        document.addEventListener('click', (e) => {
+            const btn = document.getElementById('notifications-bell-btn');
+            const menu = document.getElementById('notifications-dropdown');
+            if (menu && menu.style.display === 'flex' && !btn?.contains(e.target) && !menu.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
 
         this.bindFileUploadEvents();
         this.bindRulesTabEvents();
@@ -271,6 +308,7 @@ class BenchZeroApp {
         this.renderCandidateAssignments(this.proposals);
         this.renderRoleWorkforceDashboard();
         this.renderActivityLog();
+        this.renderNotifications();
         this.updateBadgeCount();
     }
 
@@ -502,6 +540,7 @@ class BenchZeroApp {
             if (activeLeave) {
                 leaveCount++;
                 statusList.push({
+                    id: dev.id,
                     name: dev.name, status: 'On Leave',
                     detail: `${activeLeave.reason} — until ${activeLeave.end_date}`,
                     badgeClass: 'status-badge-purple'
@@ -510,12 +549,15 @@ class BenchZeroApp {
             }
 
             const activeAlloc = this.allocations.find(
-                a => a.developer === dev.id && a.status === 'confirmed' && this.isDateInRange(today, a.start_date, a.end_date)
+                a => a.developer === dev.id && a.status === 'confirmed' && new Date(a.end_date) >= today
             );
             if (activeAlloc) {
                 allocatedCount++;
+                const isUpcoming = new Date(activeAlloc.start_date) > today;
                 statusList.push({
-                    name: dev.name, status: 'Allocated',
+                    id: dev.id,
+                    name: dev.name,
+                    status: isUpcoming ? `Allocated (Starts ${activeAlloc.start_date})` : 'Allocated',
                     detail: `${activeAlloc.project_name} — ${activeAlloc.role_title} (until ${activeAlloc.end_date})`,
                     badgeClass: 'status-badge-emerald'
                 });
@@ -531,6 +573,7 @@ class BenchZeroApp {
                 });
                 const daysBench = Math.max(0, Math.floor((today - sinceDate) / (1000 * 60 * 60 * 24)));
                 statusList.push({
+                    id: dev.id,
                     name: dev.name, status: 'On Bench',
                     detail: `${daysBench} day${daysBench === 1 ? '' : 's'} on bench`,
                     badgeClass: 'status-badge-amber'
@@ -552,7 +595,7 @@ class BenchZeroApp {
             (proj.slots || []).forEach(slot => {
                 totalNeeded += slot.headcount_needed;
                 const filled = this.allocations.filter(
-                    a => a.project_slot === slot.id && a.status === 'confirmed' && this.isDateInRange(today, a.start_date, a.end_date)
+                    a => a.project_slot === slot.id && a.status === 'confirmed' && new Date(a.end_date) >= today
                 ).length;
                 totalFilled += Math.min(filled, slot.headcount_needed);
             });
@@ -576,6 +619,7 @@ class BenchZeroApp {
             }
 
             rows.push({
+                id: proj.id,
                 name: proj.name, client: proj.client, priority: proj.priority,
                 filled: `${totalFilled}/${totalNeeded}`, status: statusLabel, badgeClass
             });
@@ -776,10 +820,31 @@ class BenchZeroApp {
         if (!runData) return;
         const metrics = runData.summary_metrics || {};
 
-        document.getElementById('stat-total-devs').textContent = (metrics.assigned_developers || 0) + (metrics.bench_developers || 0);
-        document.getElementById('stat-bench-devs').textContent = metrics.bench_developers || 0;
-        document.getElementById('stat-staffed-slots').textContent = metrics.staffed_assignments || 0;
-        document.getElementById('stat-high-prio').textContent = `${metrics.high_priority_fulfillment_pct || 0}%`;
+        // Bug 1 Fix: Compute KPI cards from LIVE data, not stale solver snapshot
+        const wf = this.computeWorkforceStatus();
+        const proj = this.computeProjectStatus();
+        const totalDevs = this.developers.length;
+        const benchDevs = wf.benchCount;
+        const confirmedAllocs = (this.allocations || []).filter(a => a.status === 'confirmed');
+        const staffedSlots = confirmedAllocs.length;
+
+        // High-priority fulfillment: count confirmed allocs for P4+ slots
+        let highPrioTotal = 0, highPrioFilled = 0;
+        (this.projects || []).forEach(p => {
+            (p.slots || []).forEach(s => {
+                if (s.priority >= 4) {
+                    highPrioTotal += s.headcount_needed;
+                    const filled = confirmedAllocs.filter(a => a.project_slot === s.id).length;
+                    highPrioFilled += Math.min(filled, s.headcount_needed);
+                }
+            });
+        });
+        const highPrioPct = highPrioTotal > 0 ? Math.round((highPrioFilled / highPrioTotal) * 100) : 0;
+
+        document.getElementById('stat-total-devs').textContent = totalDevs;
+        document.getElementById('stat-bench-devs').textContent = benchDevs;
+        document.getElementById('stat-staffed-slots').textContent = staffedSlots;
+        document.getElementById('stat-high-prio').textContent = `${highPrioPct}%`;
 
         const comp = metrics.comparison || {};
         const cpsat = comp.cpsat || {};
@@ -790,18 +855,18 @@ class BenchZeroApp {
         document.getElementById('dash-gain-badge').textContent = `CP-SAT +${gainPct}% Score vs Greedy`;
 
         document.getElementById('dash-cpsat-score').textContent = (cpsat.total_score || runData.total_score || 0).toFixed(1);
-        document.getElementById('dash-cpsat-assigned').textContent = cpsat.assignments ? cpsat.assignments.length : (runData.summary_metrics ? runData.summary_metrics.staffed_assignments : 0);
-        document.getElementById('dash-cpsat-bench').textContent = metrics.bench_developers || 0;
+        document.getElementById('dash-cpsat-assigned').textContent = cpsat.assignments ? cpsat.assignments.length : (metrics.staffed_assignments || 0);
+        document.getElementById('dash-cpsat-bench').textContent = cpsat.assignments ? Math.max(0, totalDevs - cpsat.assignments.length) : benchDevs;
         document.getElementById('dash-cpsat-runtime').textContent = `${(cpsat.runtime_seconds || runData.runtime_seconds || 0).toFixed(3)}s`;
 
         document.getElementById('dash-greedy-score').textContent = (greedy.total_score || 0).toFixed(1);
         document.getElementById('dash-greedy-assigned').textContent = greedy.assignments ? greedy.assignments.length : 0;
-        document.getElementById('dash-greedy-bench').textContent = greedy.total_score ? Math.max(0, 15 - greedy.assignments.length) : 0;
+        document.getElementById('dash-greedy-bench').textContent = greedy.assignments ? Math.max(0, totalDevs - greedy.assignments.length) : 0;
         document.getElementById('dash-greedy-runtime').textContent = `${(greedy.runtime_seconds || 0).toFixed(3)}s`;
 
         document.getElementById('dash-scipy-score').textContent = (scipy.total_score || 0).toFixed(1);
         document.getElementById('dash-scipy-assigned').textContent = scipy.assignments ? scipy.assignments.length : 0;
-        document.getElementById('dash-scipy-bench').textContent = scipy.total_score ? Math.max(0, 15 - scipy.assignments.length) : 0;
+        document.getElementById('dash-scipy-bench').textContent = scipy.assignments ? Math.max(0, totalDevs - scipy.assignments.length) : 0;
         document.getElementById('dash-scipy-runtime').textContent = `${(scipy.runtime_seconds || 0).toFixed(3)}s`;
 
         this.renderDashBenchmarkChart(cpsat, greedy, scipy);
@@ -822,41 +887,63 @@ class BenchZeroApp {
     renderDashBenchmarkChart(cpsat, greedy, scipy) {
         const ctx = document.getElementById('dashBenchmarkChart');
         if (!ctx) return;
+        if (typeof Chart === 'undefined') return;
 
         if (this.dashBenchmarkChart) {
             this.dashBenchmarkChart.destroy();
         }
 
+        // Bug 3 Fix: Separate score and slots into dual Y-axis chart
+        const cpsatScore = cpsat.total_score || 0;
+        const scipyScore = scipy.total_score || 0;
+        const greedyScore = greedy.total_score || 0;
+        const cpsatSlots = cpsat.assignments ? cpsat.assignments.length : 0;
+        const scipySlots = scipy.assignments ? scipy.assignments.length : 0;
+        const greedySlots = greedy.assignments ? greedy.assignments.length : 0;
+
         this.dashBenchmarkChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Total Score', 'Staffed Slots'],
+                labels: ['CP-SAT', 'SciPy', 'Greedy'],
                 datasets: [
                     {
-                        label: 'Google OR-Tools CP-SAT (Optimal)',
-                        data: [cpsat.total_score || 0, cpsat.assignments ? cpsat.assignments.length : 0],
-                        backgroundColor: '#58a6ff'
+                        label: 'Quality Score',
+                        data: [cpsatScore, scipyScore, greedyScore],
+                        backgroundColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        yAxisID: 'yScore',
+                        order: 2
                     },
                     {
-                        label: 'SciPy Bipartite Matcher',
-                        data: [scipy.total_score || 0, scipy.assignments ? scipy.assignments.length : 0],
-                        backgroundColor: '#bc8cff'
-                    },
-                    {
-                        label: 'Naive Greedy Matcher',
-                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
-                        backgroundColor: '#8b949e'
+                        label: 'Staffed Slots',
+                        data: [cpsatSlots, scipySlots, greedySlots],
+                        backgroundColor: ['rgba(88,166,255,0.35)', 'rgba(188,140,255,0.35)', 'rgba(139,148,158,0.35)'],
+                        borderColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        borderWidth: 2,
+                        yAxisID: 'ySlots',
+                        order: 1
                     }
                 ]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#8b949e' } }
+                    legend: { labels: { color: '#8b949e', font: { size: 11 } } }
                 },
                 scales: {
                     x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    yScore: {
+                        type: 'linear', position: 'left',
+                        title: { display: true, text: 'Quality Score', color: '#8b949e', font: { size: 11 } },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    },
+                    ySlots: {
+                        type: 'linear', position: 'right',
+                        title: { display: true, text: 'Staffed Slots', color: '#8b949e', font: { size: 11 } },
+                        ticks: { color: '#8b949e', stepSize: 1 },
+                        grid: { drawOnChartArea: false }
+                    }
                 }
             }
         });
@@ -865,41 +952,62 @@ class BenchZeroApp {
     renderBenchmarkChart(cpsat, greedy, scipy) {
         const ctx = document.getElementById('benchmarkChart');
         if (!ctx) return;
+        if (typeof Chart === 'undefined') return;
 
         if (this.benchmarkChart) {
             this.benchmarkChart.destroy();
         }
 
+        const cpsatScore = cpsat.total_score || 0;
+        const scipyScore = scipy.total_score || 0;
+        const greedyScore = greedy.total_score || 0;
+        const cpsatSlots = cpsat.assignments ? cpsat.assignments.length : 0;
+        const scipySlots = scipy.assignments ? scipy.assignments.length : 0;
+        const greedySlots = greedy.assignments ? greedy.assignments.length : 0;
+
         this.benchmarkChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Total Score', 'Staffed Slots'],
+                labels: ['CP-SAT', 'SciPy', 'Greedy'],
                 datasets: [
                     {
-                        label: 'Google OR-Tools CP-SAT (Optimal)',
-                        data: [cpsat.total_score || 0, cpsat.assignments ? cpsat.assignments.length : 0],
-                        backgroundColor: '#58a6ff'
+                        label: 'Quality Score',
+                        data: [cpsatScore, scipyScore, greedyScore],
+                        backgroundColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        yAxisID: 'yScore',
+                        order: 2
                     },
                     {
-                        label: 'SciPy Bipartite Matcher',
-                        data: [scipy.total_score || 0, scipy.assignments ? scipy.assignments.length : 0],
-                        backgroundColor: '#bc8cff'
-                    },
-                    {
-                        label: 'Naive Greedy Matcher',
-                        data: [greedy.total_score || 0, greedy.assignments ? greedy.assignments.length : 0],
-                        backgroundColor: '#8b949e'
+                        label: 'Staffed Slots',
+                        data: [cpsatSlots, scipySlots, greedySlots],
+                        backgroundColor: ['rgba(88,166,255,0.35)', 'rgba(188,140,255,0.35)', 'rgba(139,148,158,0.35)'],
+                        borderColor: ['#58a6ff', '#bc8cff', '#8b949e'],
+                        borderWidth: 2,
+                        yAxisID: 'ySlots',
+                        order: 1
                     }
                 ]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#8b949e' } }
+                    legend: { labels: { color: '#8b949e', font: { size: 11 } } }
                 },
                 scales: {
                     x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    yScore: {
+                        type: 'linear', position: 'left',
+                        title: { display: true, text: 'Quality Score', color: '#8b949e', font: { size: 11 } },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    },
+                    ySlots: {
+                        type: 'linear', position: 'right',
+                        title: { display: true, text: 'Staffed Slots', color: '#8b949e', font: { size: 11 } },
+                        ticks: { color: '#8b949e', stepSize: 1 },
+                        grid: { drawOnChartArea: false }
+                    }
                 }
             }
         });
@@ -1046,7 +1154,7 @@ class BenchZeroApp {
                     ...eligibleOthers.slice(0, 5)
                 ];
 
-                if (displayCandidates.length === 0 && !isSlotFull) return;
+                // Bug 2 Fix: Always show role slots, even with 0 candidates
                 hasAnySlots = true;
 
                 const candidateRows = displayCandidates.map(c => {
@@ -1107,7 +1215,11 @@ class BenchZeroApp {
                             <span class="role-priority-chip mono-text">P${slot.priority}</span>
                         </div>
                         <div class="role-candidates-list">
-                            ${isSlotFull ? `<div style="font-size: 12px; color: var(--green); padding: 4px 8px; font-weight: 500;"><i class="fa-solid fa-circle-check"></i> All ${slot.headcount_needed} developer position(s) fully allocated.</div>` : candidateRows}
+                            ${isSlotFull
+                                ? `<div style="font-size: 12px; color: var(--green); padding: 4px 8px; font-weight: 500;"><i class="fa-solid fa-circle-check"></i> All ${slot.headcount_needed} developer position(s) fully allocated.</div>`
+                                : (displayCandidates.length > 0
+                                    ? candidateRows
+                                    : `<div class="empty-slot-notice"><i class="fa-solid fa-user-slash"></i> No eligible candidates found. <button class="btn btn-sm btn-outline" onclick="app.switchTab('management')" style="margin-left:8px;">Add Developers →</button></div>`)}
                             ${!isSlotFull ? moreText : ''}
                         </div>
                     </div>
@@ -1354,17 +1466,23 @@ class BenchZeroApp {
             document.body.appendChild(container);
         }
 
+        // Item 7: Limit to max 5 visible toasts — dismiss oldest
+        const existing = container.querySelectorAll('.toast-item');
+        if (existing.length >= 5) {
+            existing[0].remove();
+        }
+
         const toast = document.createElement('div');
         toast.className = `toast-item toast-${type}`;
         const icon = type === 'success' ? 'fa-circle-check' : type === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-info';
-        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(message)}</span>`;
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(message)}</span> <button class="toast-dismiss" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>`;
 
         container.appendChild(toast);
 
         setTimeout(() => {
             toast.classList.add('toast-fade-out');
             setTimeout(() => toast.remove(), 300);
-        }, 4000);
+        }, 4500);
     }
 
     dismissUploadAlert() {
@@ -2050,6 +2168,7 @@ class BenchZeroApp {
         this.renderRoleDistributionChart(roleMap);
 
         // Filter roleMap based on user search & filter
+        const skillFilter = (document.getElementById('role-skill-filter')?.value || 'all').toLowerCase();
         let roleEntries = Object.values(roleMap);
 
         if (roleEntries.length === 0) {
@@ -2074,7 +2193,10 @@ class BenchZeroApp {
                     (statusFilter === 'working' && (d.status === 'WORKING' || d.status === 'PROPOSED')) ||
                     (statusFilter === 'bench' && d.status === 'BENCH');
 
-                return matchesSearch && matchesStatus;
+                const matchesSkill = skillFilter === 'all' ||
+                    d.skills.some(s => s.name.toLowerCase().includes(skillFilter));
+
+                return matchesSearch && matchesStatus && matchesSkill;
             });
 
             if (filteredDevs.length === 0) return;
@@ -2132,7 +2254,7 @@ class BenchZeroApp {
                                     <i class="fa-solid fa-user"></i>
                                 </div>
                                 <div>
-                                    <h4 class="dev-name">${d.name}</h4>
+                                    <h4 class="dev-name clickable-dev-name" onclick="app.showDeveloperModal(${d.id})" title="Click to view full developer profile">${d.name} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; color: var(--primary);"></i></h4>
                                     <span class="dev-email"><i class="fa-solid fa-envelope"></i> ${d.email}</span>
                                 </div>
                             </div>
@@ -2175,24 +2297,21 @@ class BenchZeroApp {
             `;
         });
 
-        if (!html) {
-            container.innerHTML = `<div class="card" style="padding: 30px; text-align: center; color: var(--text-muted);">
-                <i class="fa-solid fa-filter" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
-                No developers match the active search or status filter.
-            </div>`;
-            return;
-        }
-
-        container.innerHTML = html;
+        container.innerHTML = html || `<div class="card" style="padding: 30px; text-align: center; color: var(--text-muted);">
+            <i class="fa-solid fa-filter-circle-xmark" style="font-size: 28px; margin-bottom: 10px; display: block;"></i>
+            No developers match the active search and skill filters.
+        </div>`;
     }
 
     renderRoleDistributionChart(roleMap) {
         const ctx = document.getElementById('roleDistributionChart');
-        if (!ctx || typeof Chart === 'undefined') return;
-
-        if (this.roleDistributionChartInstance) {
-            this.roleDistributionChartInstance.destroy();
+        if (!ctx) return;
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js unavailable -- skipping role distribution chart.');
+            return;
         }
+
+        if (this.roleDistributionChartInstance) this.roleDistributionChartInstance.destroy();
 
         const labels = Object.keys(roleMap);
         const workingData = labels.map(r => roleMap[r].workingCount);
@@ -2204,14 +2323,16 @@ class BenchZeroApp {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Working / Allocated',
+                        label: 'Working / Staffed',
                         data: workingData,
-                        backgroundColor: '#10b981'
+                        backgroundColor: '#10b981',
+                        borderRadius: 4
                     },
                     {
                         label: 'On Bench',
                         data: benchData,
-                        backgroundColor: '#f59e0b'
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 4
                     }
                 ]
             },
@@ -2221,22 +2342,347 @@ class BenchZeroApp {
                 scales: {
                     x: {
                         stacked: true,
-                        ticks: { color: '#9ca3af' },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
+                        ticks: { color: '#9ca3af', font: { size: 11 } },
+                        grid: { display: false }
                     },
                     y: {
                         stacked: true,
-                        ticks: { color: '#9ca3af', precision: 0 },
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af', stepSize: 1 },
                         grid: { color: 'rgba(255,255,255,0.05)' }
                     }
                 },
                 plugins: {
                     legend: {
-                        labels: { color: '#9ca3af' }
+                        position: 'top',
+                        labels: { color: '#9ca3af', boxWidth: 12, padding: 12 }
                     }
                 }
             }
         });
+    }
+
+    // ===== Item 10: Developer Profile Detail Modal =====
+    showDeveloperModal(devId) {
+        const dev = (this.developers || []).find(d => d.id === devId);
+        if (!dev) return;
+
+        const modal = document.getElementById('developer-detail-modal');
+        const body = document.getElementById('developer-detail-modal-body');
+        if (!modal || !body) return;
+
+        const devSkills = dev.developer_skills || [];
+        const devAllocs = (this.allocations || []).filter(a => a.developer === dev.id);
+        const activeAlloc = devAllocs.find(a => a.status === 'confirmed' && new Date(a.end_date) >= new Date());
+        const pastAllocs = devAllocs.filter(a => a !== activeAlloc).sort((a, b) => new Date(b.end_date) - new Date(a.end_date));
+        const leaves = dev.leaves || [];
+
+        const initials = dev.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+        const skillsBarsHtml = devSkills.length > 0
+            ? devSkills.map(s => {
+                const pct = (s.proficiency_level / 5) * 100;
+                return `
+                    <div class="skill-meter-item">
+                        <div class="skill-meter-header">
+                            <span>${escapeHtml(s.skill_name)}</span>
+                            <span style="color: var(--primary);">Lvl ${s.proficiency_level} / 5</span>
+                        </div>
+                        <div class="skill-progress-bar">
+                            <div class="skill-progress-fill" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<p style="color: var(--text-muted); font-size: 13px;">No skill ratings recorded.</p>';
+
+        const allocsHistoryHtml = devAllocs.length > 0
+            ? devAllocs.map(a => {
+                const isConfirmed = a.status === 'confirmed';
+                return `
+                    <div class="history-timeline-item">
+                        <div style="font-size: 18px; color: ${isConfirmed ? 'var(--green)' : 'var(--text-muted)'};">
+                            <i class="fa-solid ${isConfirmed ? 'fa-circle-check' : 'fa-clock-rotate-left'}"></i>
+                        </div>
+                        <div style="flex: 1;">
+                            <div class="flex-between">
+                                <strong>${escapeHtml(a.project_name)}</strong>
+                                <span class="badge ${isConfirmed ? 'badge-emerald' : 'badge-count'}">${a.status.toUpperCase()}</span>
+                            </div>
+                            <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
+                                <span>${escapeHtml(a.role_title)}</span> · <span>${a.allocated_hours}h/week</span>
+                            </div>
+                            <div style="color: var(--text-dim); font-size: 11px; margin-top: 2px;">
+                                ${a.start_date} to ${a.end_date}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<p style="color: var(--text-muted); font-size: 13px;">No project allocations on record yet.</p>';
+
+        const leavesHtml = leaves.length > 0
+            ? leaves.map(l => `
+                <div class="history-timeline-item">
+                    <div style="color: var(--purple); font-size: 16px;"><i class="fa-solid fa-umbrella-beach"></i></div>
+                    <div>
+                        <strong>${escapeHtml(l.reason || 'Vacation')}</strong>
+                        <div style="color: var(--text-muted); font-size: 12px;">${l.start_date} to ${l.end_date} (${l.is_approved ? 'Approved' : 'Pending'})</div>
+                    </div>
+                </div>
+            `).join('')
+            : '<p style="color: var(--text-muted); font-size: 13px;">No leave records scheduled.</p>';
+
+        body.innerHTML = `
+            <div class="dev-profile-header">
+                <div class="dev-profile-avatar">${initials}</div>
+                <div class="dev-profile-meta" style="flex: 1;">
+                    <h3>${escapeHtml(dev.name)}</h3>
+                    <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px;">${escapeHtml(dev.title)} · <span class="mono-text">${escapeHtml(dev.email)}</span></div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span class="badge ${activeAlloc ? 'badge-emerald' : 'badge-amber'}">${activeAlloc ? 'ALLOCATED' : 'ON BENCH'}</span>
+                        <span class="badge badge-solver mono-text">$${floatVal(dev.hourly_cost)}/hr</span>
+                        <span class="badge badge-count mono-text">${dev.max_weekly_hours}h/wk max</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section-title"><i class="fa-solid fa-code"></i> Technical Skills & Proficiency</div>
+            <div class="dev-skills-grid">
+                ${skillsBarsHtml}
+            </div>
+
+            <div class="detail-section-title"><i class="fa-solid fa-briefcase"></i> Project Allocation History (${devAllocs.length})</div>
+            <div>
+                ${allocsHistoryHtml}
+            </div>
+
+            <div class="detail-section-title"><i class="fa-solid fa-calendar-days"></i> Leave Schedule (${leaves.length})</div>
+            <div>
+                ${leavesHtml}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                <button type="button" class="btn btn-outline" onclick="app.hideDeveloperModal()">Close</button>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
+    hideDeveloperModal() {
+        const modal = document.getElementById('developer-detail-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // ===== Item 11: Project Detail Modal =====
+    showProjectModal(projectId) {
+        const proj = (this.projects || []).find(p => p.id === projectId);
+        if (!proj) return;
+
+        const modal = document.getElementById('project-detail-modal');
+        const body = document.getElementById('project-detail-modal-body');
+        if (!modal || !body) return;
+
+        const slots = proj.slots || [];
+        const confirmedAllocs = (this.allocations || []).filter(a => a.status === 'confirmed');
+
+        let totalHeadcount = 0;
+        let staffedHeadcount = 0;
+
+        const slotsHtml = slots.map(slot => {
+            totalHeadcount += slot.headcount_needed;
+            const slotAllocs = confirmedAllocs.filter(a => a.project_slot === slot.id);
+            staffedHeadcount += Math.min(slotAllocs.length, slot.headcount_needed);
+            const isFilled = slotAllocs.length >= slot.headcount_needed;
+
+            const reqsHtml = (slot.skill_requirements || []).map(r =>
+                `<span class="badge badge-solver">${escapeHtml(r.skill_name)} >= Lvl ${r.min_proficiency} ${r.is_mandatory ? '(Req)' : ''}</span>`
+            ).join(' ');
+
+            const devsHtml = slotAllocs.map(a =>
+                `<span class="badge badge-emerald"><i class="fa-solid fa-user-check"></i> ${escapeHtml(a.developer_name)}</span>`
+            ).join(' ');
+
+            return `
+                <div class="history-timeline-item">
+                    <div style="font-size: 18px; color: ${isFilled ? 'var(--green)' : 'var(--amber)'};">
+                        <i class="fa-solid ${isFilled ? 'fa-circle-check' : 'fa-briefcase'}"></i>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="flex-between">
+                            <strong>${escapeHtml(slot.role_title)}</strong>
+                            <span class="badge ${isFilled ? 'badge-emerald' : 'badge-amber'}">${slotAllocs.length}/${slot.headcount_needed} Staffed</span>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 12px; margin: 4px 0;">
+                            <span>${slot.start_date} to ${slot.end_date}</span> · <span class="mono-text">P${slot.priority} Priority</span> · <span>${slot.weekly_hours_required || 40}h/wk</span>
+                        </div>
+                        <div style="margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;">
+                            ${reqsHtml || '<span style="font-size: 11px; color: var(--text-dim);">No specific skills required</span>'}
+                        </div>
+                        ${devsHtml ? `<div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">${devsHtml}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('') || '<p style="color: var(--text-muted);">No role demand slots configured for this project.</p>';
+
+        body.innerHTML = `
+            <div class="dev-profile-header">
+                <div class="dev-profile-avatar" style="background: linear-gradient(135deg, #10b981, var(--primary));">
+                    <i class="fa-solid fa-folder-open"></i>
+                </div>
+                <div class="dev-profile-meta" style="flex: 1;">
+                    <h3>${escapeHtml(proj.name)}</h3>
+                    <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px;">Client: <strong>${escapeHtml(proj.client)}</strong> · Priority: <strong style="color: var(--amber);">P${proj.priority}</strong></div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span class="badge ${staffedHeadcount >= totalHeadcount && totalHeadcount > 0 ? 'badge-emerald' : 'badge-amber'}">${staffedHeadcount}/${totalHeadcount} Staffed</span>
+                        <span class="badge badge-solver mono-text">Budget: $${floatVal(proj.budget)}</span>
+                        <span class="badge badge-count">${slots.length} Role Slot(s)</span>
+                    </div>
+                </div>
+            </div>
+
+            ${proj.description ? `<p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">${escapeHtml(proj.description)}</p>` : ''}
+
+            <div class="detail-section-title"><i class="fa-solid fa-layer-group"></i> Project Demand Slots & Staffing</div>
+            <div>
+                ${slotsHtml}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                <button type="button" class="btn btn-outline" onclick="app.hideProjectModal()">Close</button>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
+    hideProjectModal() {
+        const modal = document.getElementById('project-detail-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // ===== Item 13: Solver History Modal =====
+    async showSolverHistoryModal() {
+        const modal = document.getElementById('solver-history-modal');
+        const body = document.getElementById('solver-history-modal-body');
+        if (!modal || !body) return;
+
+        const { ok, data } = await this.safeFetchJson('/api/solver-runs/');
+        const runs = ok ? extractArray(data) : [];
+
+        if (runs.length === 0) {
+            body.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 30px;">No optimization engine runs recorded yet. Click "RUN CP-SAT SOLVER" to execute your first solve.</p>';
+        } else {
+            const rowsHtml = runs.map(run => {
+                const metrics = run.summary_metrics || {};
+                const comp = metrics.comparison || {};
+                const gain = comp.gain_vs_greedy_pct !== undefined ? `+${comp.gain_vs_greedy_pct}%` : '—';
+                const when = this.formatRelativeTime(run.timestamp);
+
+                return `
+                    <tr>
+                        <td><strong>#${run.id}</strong></td>
+                        <td>${escapeHtml(run.objective_used || 'balanced')}</td>
+                        <td><span class="badge badge-emerald">${escapeHtml(run.status)}</span></td>
+                        <td class="mono-cell"><strong>${run.total_score ? run.total_score.toFixed(1) : '0.0'}</strong></td>
+                        <td class="mono-cell">${metrics.staffed_assignments || 0}</td>
+                        <td class="mono-cell">${gain}</td>
+                        <td class="mono-cell">${(run.runtime_seconds || 0).toFixed(3)}s</td>
+                        <td style="color: var(--text-muted); font-size: 11px;">${when}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            body.innerHTML = `
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>RUN</th>
+                                <th>OBJECTIVE</th>
+                                <th>STATUS</th>
+                                <th>SCORE</th>
+                                <th>STAFFED</th>
+                                <th>GAIN</th>
+                                <th>RUNTIME</th>
+                                <th>DATE</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" onclick="app.hideSolverHistoryModal()">Close</button>
+                </div>
+            `;
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    hideSolverHistoryModal() {
+        const modal = document.getElementById('solver-history-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // ===== Item 14: Notifications Dropdown =====
+    toggleNotificationsDropdown() {
+        const menu = document.getElementById('notifications-dropdown');
+        if (!menu) return;
+        const isVisible = menu.style.display === 'flex';
+        menu.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    renderNotifications() {
+        const container = document.getElementById('notifications-list-container');
+        const countBadge = document.getElementById('notif-count-badge');
+        if (!container) return;
+
+        const entries = [];
+        this.allocations.forEach(a => {
+            (a.audit_logs || []).forEach(log => {
+                entries.push({
+                    ...log,
+                    developer_name: a.developer_name,
+                    project_name: a.project_name,
+                    role_title: a.role_title,
+                });
+            });
+        });
+
+        entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const recent = entries.slice(0, 8);
+
+        if (countBadge) countBadge.textContent = `${recent.length} Events`;
+
+        if (recent.length === 0) {
+            container.innerHTML = '<p style="padding: 20px; color: var(--text-muted); text-align: center;">No recent events.</p>';
+            return;
+        }
+
+        const iconMap = {
+            created: { icon: 'fa-plus', color: 'var(--primary)' },
+            accepted: { icon: 'fa-circle-check', color: 'var(--green)' },
+            cancelled: { icon: 'fa-ban', color: 'var(--red)' },
+            reverted: { icon: 'fa-rotate-left', color: 'var(--amber)' },
+        };
+
+        container.innerHTML = recent.map(e => {
+            const meta = iconMap[e.action] || { icon: 'fa-circle-info', color: 'var(--primary)' };
+            const when = this.formatRelativeTime(e.timestamp);
+            return `
+                <div class="notification-item">
+                    <i class="fa-solid ${meta.icon}" style="color: ${meta.color};"></i>
+                    <div>
+                        <div><strong>${escapeHtml(e.developer_name)}</strong> ${escapeHtml(e.action)} on <strong>${escapeHtml(e.project_name)}</strong></div>
+                        <small style="color: var(--text-muted); font-size: 11px;">${when} by ${escapeHtml(e.performed_by_name || 'System')}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     downloadSampleFile(type) {

@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/python-3.13-blue.svg)
 ![Django Version](https://img.shields.io/badge/django-5.0-green.svg)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-CP--SAT-orange.svg)
-![Pytest](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)
+![Pytest](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
 
 ---
