@@ -1397,41 +1397,164 @@ class BenchZeroApp {
         const container = document.getElementById('proposals-container');
         if (!container) return;
 
-        const proposedList = proposals.filter(p => p.status === 'proposed');
+        const proposedList = (proposals || []).filter(p => p.status === 'proposed');
         if (proposedList.length === 0) {
-            container.innerHTML = `<div class="card" style="grid-column: 1 / -1; padding: 30px; text-align: center; color: var(--text-muted);">
-                <i class="fa-solid fa-circle-check" style="font-size: 32px; color: var(--emerald); margin-bottom: 12px;"></i>
-                <p>All algorithm proposals have been reviewed and accepted!</p>
+            container.innerHTML = `<div class="card" style="padding: 35px; text-align: center; color: var(--text-muted);">
+                <i class="fa-solid fa-circle-check" style="font-size: 36px; color: var(--emerald); margin-bottom: 12px; display: block;"></i>
+                <h4 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">All Proposed Allocations Reviewed</h4>
+                <p style="font-size: 13px;">All algorithm proposals have been reviewed and accepted!</p>
             </div>`;
             return;
         }
 
-        container.innerHTML = proposedList.map(p => `
-            <div class="proposal-card">
-                <div class="proposal-header">
-                    <div class="proposal-title">
-                        <h4>${escapeHtml(p.developer_name)}</h4>
-                        <span class="subtitle">${escapeHtml(p.developer_title)}</span>
+        // Group proposals by Project Title
+        const projectMap = {};
+        proposedList.forEach(p => {
+            const pName = (p.project_name || 'General Project').trim();
+            if (!projectMap[pName]) projectMap[pName] = [];
+            projectMap[pName].push(p);
+        });
+
+        // Developer rate & details lookup map
+        const devMap = {};
+        (this.developers || []).forEach(d => {
+            devMap[d.id] = d;
+        });
+
+        // Project metadata lookup map
+        const projMetadataMap = {};
+        (this.projects || []).forEach(p => {
+            projMetadataMap[p.name] = p;
+        });
+
+        let html = '';
+        // Iterate over projects
+        for (const [projName, projProposals] of Object.entries(projectMap)) {
+            // Order developer proposals within this project by fit score in descending order
+            projProposals.sort((a, b) => (parseFloat(b.fit_score) || 0) - (parseFloat(a.fit_score) || 0));
+
+            const projMeta = projMetadataMap[projName];
+            const clientName = projMeta?.client || 'Enterprise Client';
+            const priorityVal = projMeta?.priority || 3;
+            const avgFitScore = (projProposals.reduce((sum, p) => sum + (parseFloat(p.fit_score) || 0), 0) / projProposals.length).toFixed(1);
+
+            const cardsHtml = projProposals.map(p => {
+                const dev = devMap[p.developer];
+                const cost = dev ? parseFloat(dev.hourly_cost || 0).toFixed(2) : null;
+                const devSkills = dev?.developer_skills || [];
+                const skillsHtml = devSkills.length > 0
+                    ? devSkills.slice(0, 3).map(s => `<span class="role-skill-chip">${escapeHtml(s.skill_name)} <small>Lvl ${s.proficiency_level}</small></span>`).join('')
+                    : '';
+
+                return `
+                    <div class="proposal-card">
+                        <div class="proposal-header">
+                            <div class="proposal-title">
+                                <h4 class="clickable-dev-name" onclick="app.showDeveloperModal(${p.developer})" title="Click to view developer profile">
+                                    ${escapeHtml(p.developer_name)} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; color: var(--primary);"></i>
+                                </h4>
+                                <span class="subtitle"><i class="fa-solid fa-user-tag" style="color: var(--primary); font-size: 11px;"></i> ${escapeHtml(p.developer_title || 'Developer')}</span>
+                            </div>
+                            <div style="text-align: right;">
+                                <span class="proposal-score" title="Multi-objective algorithmic fit score">
+                                    <i class="fa-solid fa-bolt" style="font-size: 12px; color: var(--emerald);"></i> ${parseFloat(p.fit_score).toFixed(1)}
+                                </span>
+                                <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Fit Score</div>
+                            </div>
+                        </div>
+
+                        <div class="proposal-body">
+                            <div class="proposal-slot">
+                                <i class="fa-solid fa-briefcase" style="color: var(--primary);"></i> <strong>Role Needed:</strong> <span class="role-needed-chip">${escapeHtml(p.role_title)}</span>
+                            </div>
+                            ${skillsHtml ? `<div class="dev-skills-wrap" style="margin-top: 8px; margin-bottom: 8px;">${skillsHtml}</div>` : ''}
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+                                <span><i class="fa-solid fa-dollar-sign" style="color: var(--emerald);"></i> ${cost ? `$${cost}/hr` : 'Standard Rate'}</span>
+                                <span class="badge badge-solver"><i class="fa-solid fa-microchip"></i> CP-SAT Pick</span>
+                            </div>
+                        </div>
+
+                        <div class="proposal-actions">
+                            <button class="btn btn-sm btn-success btn-block" onclick="app.acceptProposal(${p.id})">
+                                <i class="fa-solid fa-check"></i> Accept
+                            </button>
+                            <button class="btn btn-sm btn-outline btn-block" onclick="app.rejectProposal(${p.id})">
+                                <i class="fa-solid fa-xmark"></i> Reject
+                            </button>
+                        </div>
                     </div>
-                    <span class="proposal-score">${p.fit_score.toFixed(1)}</span>
-                </div>
-                <div class="proposal-body">
-                    <div class="proposal-slot">
-                        <i class="fa-solid fa-briefcase"></i> <strong>${escapeHtml(p.project_name)}</strong> - ${escapeHtml(p.role_title)}
+                `;
+            }).join('');
+
+            html += `
+                <div class="card margin-bottom-lg proposal-project-group-card">
+                    <div class="card-header flex-between flex-wrap gap-md">
+                        <div class="flex-align-center gap-md">
+                            <div class="project-avatar-icon">
+                                <i class="fa-solid fa-folder-open" style="color: var(--primary);"></i>
+                            </div>
+                            <div>
+                                <h3 style="font-family: var(--font-heading); font-size: 17px; margin-bottom: 2px;">
+                                    ${escapeHtml(projName)}
+                                </h3>
+                                <div style="font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                    <span><i class="fa-solid fa-building"></i> ${escapeHtml(clientName)}</span>
+                                    <span class="badge badge-count">P${priorityVal} Priority</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <span class="badge badge-solver">${projProposals.length} Proposed Role${projProposals.length > 1 ? 's' : ''}</span>
+                            <span class="status-chip status-chip-emerald"><i class="fa-solid fa-star"></i> Avg Fit: <strong>${avgFitScore}</strong></span>
+                            <button class="btn btn-sm btn-success" onclick="app.bulkAcceptForProject('${escapeHtml(projName)}')">
+                                <i class="fa-solid fa-check-double"></i> Accept Project
+                            </button>
+                        </div>
                     </div>
-                    <span class="badge badge-solver">CP-SAT Proposed</span>
+                    <div class="card-body">
+                        <div class="proposals-list-grid">
+                            ${cardsHtml}
+                        </div>
+                    </div>
                 </div>
-                <div class="proposal-actions">
-                    <button class="btn btn-sm btn-success btn-block" onclick="app.acceptProposal(${p.id})">
-                        <i class="fa-solid fa-check"></i> Accept
-                    </button>
-                    <button class="btn btn-sm btn-outline btn-block" onclick="app.rejectProposal(${p.id})">
-                        <i class="fa-solid fa-xmark"></i> Reject
-                    </button>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }
+
+        container.innerHTML = html;
     }
+
+    async bulkAcceptForProject(projectName) {
+        const projectProposalIds = (this.proposals || [])
+            .filter(p => p.status === 'proposed' && p.project_name === projectName)
+            .map(p => p.id);
+
+        if (projectProposalIds.length === 0) {
+            this.showToast(`No pending proposals found for ${projectName}.`, 'info');
+            return;
+        }
+
+        const { ok, status, data } = await this.safeFetchJson('/api/proposals/bulk-accept/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_ids: projectProposalIds })
+        });
+
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.bulkAcceptForProject(projectName), name: `Accept All for ${projectName}` },
+                `Staff login required to accept proposals for ${projectName}. Please log in.`
+            );
+            return;
+        }
+
+        if (ok && data) {
+            this.showToast(`Accepted ${data.accepted_count} proposal(s) for ${projectName}.`, 'success');
+            await this.loadAllData();
+        } else {
+            this.showToast(data?.error || 'Bulk accept for project failed.', 'warning');
+        }
+    }
+
 
     renderConfirmedAllocations(allocations) {
         const tbody = document.getElementById('confirmed-allocations-body');

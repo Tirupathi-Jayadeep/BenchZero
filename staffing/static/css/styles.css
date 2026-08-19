@@ -612,6 +612,40 @@ body {
     gap: 10px;
 }
 
+.proposal-project-group-card {
+    border-left: 3px solid var(--primary);
+    transition: all 0.2s ease;
+}
+
+.proposal-project-group-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.project-avatar-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.role-needed-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    color: var(--text-main);
+    font-weight: 600;
+    font-size: 12px;
+}
+
+
 /* Data Table */
 .table-responsive {
     overflow-x: auto;
