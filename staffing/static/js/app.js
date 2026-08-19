@@ -121,13 +121,14 @@ class BenchZeroApp {
             `;
         } else {
             container.innerHTML = `
-                <span class="badge badge-count" style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px; background: rgba(255,255,255,0.06); color: var(--text-muted);">
+                <span class="badge badge-count" style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px;">
                     <i class="fa-solid fa-unlock"></i> Local Demo Mode
                 </span>
                 <button type="button" class="btn btn-sm btn-outline" onclick="app.showLoginModal()">
                     Staff Login
                 </button>
             `;
+
         }
     }
 
@@ -1393,19 +1394,19 @@ class BenchZeroApp {
         let html = '';
         for (const [projName, teamMembers] of Object.entries(projectMap)) {
             const membersHtml = teamMembers.map(m => `
-                <div style="background-color: #0e1424; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                        <strong style="display: block; font-size: 14px;">${m.developer_name}</strong>
-                        <span style="font-size: 12px; color: var(--text-muted);">${m.role_title} (${m.hours}h/wk)</span>
+                <div class="team-member-pill">
+                    <div class="team-member-pill-info">
+                        <strong>${escapeHtml(m.developer_name)}</strong>
+                        <span>${escapeHtml(m.role_title)} (${m.hours}h/wk)</span>
                     </div>
                     <span class="badge ${m.status === 'CONFIRMED' ? 'badge-emerald' : 'badge-solver'}">${m.status}</span>
                 </div>
             `).join('');
 
             html += `
-                <div class="card margin-bottom-lg">
+                <div class="card margin-bottom-lg team-roster-card">
                     <div class="card-header">
-                        <h3><i class="fa-solid fa-folder-open"></i> Project: ${projName}</h3>
+                        <h3><i class="fa-solid fa-folder-open"></i> Project: ${escapeHtml(projName)}</h3>
                         <span class="badge badge-emerald">${teamMembers.length} Developers Staffed</span>
                     </div>
                     <div class="card-body">
@@ -1419,6 +1420,7 @@ class BenchZeroApp {
 
         container.innerHTML = html;
     }
+
 
     renderProposals(proposals) {
         const container = document.getElementById('proposals-container');

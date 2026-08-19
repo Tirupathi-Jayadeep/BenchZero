@@ -647,6 +647,38 @@ body {
     font-size: 12px;
 }
 
+/* Team Roster View Pills */
+.team-roster-card {
+    border-left: 3px solid var(--primary);
+}
+
+.team-member-pill {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.15s ease;
+}
+
+.team-member-pill:hover {
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.team-member-pill-info strong {
+    display: block;
+    font-size: 14px;
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.team-member-pill-info span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
 
 /* Data Table */
 .table-responsive {
@@ -661,7 +693,7 @@ body {
 
 .data-table th {
     padding: 12px 16px;
-    background-color: #0e1424;
+    background-color: var(--card-header-bg, rgba(255, 255, 255, 0.02));
     border-bottom: 1px solid var(--border-color);
     color: var(--text-muted);
     font-size: 12px;
@@ -675,8 +707,9 @@ body {
 }
 
 .data-table tr:hover td {
-    background-color: #1c2844;
+    background-color: var(--bg-card-hover);
 }
+
 
 .flex-between {
     display: flex;
@@ -2242,13 +2275,29 @@ body.theme-light .assignment-candidate-card {
     border-color: #e2e8f0;
 }
 
-/* Developer Member Role Cards in Light Mode */
-body.theme-light .dev-role-member-card {
+/* Developer Member Role Cards & Team Pills in Light Mode */
+body.theme-light .dev-role-member-card,
+body.theme-light .team-member-pill {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     color: #0f172a;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
+
+body.theme-light .team-member-pill-info strong {
+    color: #0f172a;
+}
+
+body.theme-light .team-member-pill-info span {
+    color: #475569;
+}
+
+body.theme-light .team-roster-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #2563eb;
+}
+
 
 body.theme-light .dev-role-member-card.working-dev-card {
     border-left: 3px solid #059669;
