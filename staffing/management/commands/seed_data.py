@@ -1,4 +1,6 @@
+import os
 from datetime import date, timedelta
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from staffing.models import (
@@ -13,10 +15,33 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("Seeding BenchZero database..."))
 
-        # Create staff admin user if not existing
-        if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser('admin', 'admin@benchzero.io', 'adminpassword')
-            self.stdout.write(self.style.SUCCESS("Created staff user 'admin' (password: 'adminpassword')"))
+        # Create staff admin user from env vars or safe defaults (DEBUG only)
+        su_username = os.getenv('DJANGO_SUPERUSER_USERNAME', 'admin')
+        su_email = os.getenv('DJANGO_SUPERUSER_EMAIL', 'admin@benchzero.io')
+        su_password = os.getenv('DJANGO_SUPERUSER_PASSWORD', '')
+
+        if not User.objects.filter(username=su_username).exists():
+            if not su_password:
+                if not settings.DEBUG:
+                    self.stdout.write(self.style.WARNING(
+                        "Skipping superuser creation: DJANGO_SUPERUSER_PASSWORD is not set "
+                        "and DEBUG=False. Set DJANGO_SUPERUSER_USERNAME, DJANGO_SUPERUSER_EMAIL, "
+                        "and DJANGO_SUPERUSER_PASSWORD env vars, or use 'manage.py createsuperuser'."
+                    ))
+                else:
+                    # Local dev convenience — use weak default only when DEBUG=True
+                    su_password = 'adminpassword'
+                    User.objects.create_superuser(su_username, su_email, su_password)
+                    self.stdout.write(self.style.WARNING(
+                        f"Created staff user '{su_username}' with DEFAULT password "
+                        f"(DEBUG mode only). Change immediately if exposing beyond localhost."
+                    ))
+            else:
+                User.objects.create_superuser(su_username, su_email, su_password)
+                self.stdout.write(self.style.SUCCESS(
+                    f"Created staff user '{su_username}' from environment variables."
+                ))
+
 
         # Clear existing data
         AllocationProposal.objects.all().delete()

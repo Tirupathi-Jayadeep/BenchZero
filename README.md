@@ -3,7 +3,7 @@
 > **Transforming workforce bench management from manual lookup into a Constraint Satisfaction & Multi-Objective Optimization Problem.**
 
 ![Python Version](https://img.shields.io/badge/python-3.13-blue.svg)
-![Django Version](https://img.shields.io/badge/django-5.0-green.svg)
+![Django Version](https://img.shields.io/badge/django-5.x-green.svg)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-CP--SAT-orange.svg)
 ![Pytest](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
@@ -27,15 +27,17 @@ Given $N$ developers (skills, proficiency levels 1-5, max weekly hours, leave sc
 
 ---
 
-## 📊 2. Proven Optimization Performance Benchmarks
+## 📊 2. Optimization Performance: How CP-SAT Beats Greedy
 
-In benchmark comparisons against baseline matching algorithms on identical workforce datasets:
+The three solver engines (CP-SAT, SciPy Hungarian, Greedy) are compared on every optimization run. Below is a **representative** comparison from a single run against the default seed dataset. Exact scores, bench counts, and gain percentages **vary between runs** depending on existing database state (prior allocations, proposals, and developer/project counts at execution time):
 
-| Algorithm Engine | Mathematical / Logical Model | Total Quality Score | Bench Count | High-Priority Coverage | Optimization Gain |
+| Algorithm Engine | Mathematical / Logical Model | Example Quality Score | Example Bench Count | Example High-Prio Coverage | Example Gain |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Google OR-Tools CP-SAT** | **Constraint Programming / Integer Linear Programming** | **1565.0** | **4 Devs** | **100.0%** | **+6.9% Winner** |
-| **SciPy Hungarian Matcher** | Linear Sum Assignment (`scipy.optimize.linear_sum_assignment`) | 1565.0 | 4 Devs | 100.0% | +6.9% |
-| **Naive Greedy Matcher** | Local First-Best Decision (Highest Match First) | 1464.4 | 5 Devs | 83.3% | Baseline |
+| **Google OR-Tools CP-SAT** | **Constraint Programming / Integer Linear Programming** | ~1200–1600 | 4–6 Devs | 83–100% | **+5–12% Winner** |
+| **SciPy Hungarian Matcher** | Linear Sum Assignment (`scipy.optimize.linear_sum_assignment`) | ~1200–1600 | 4–6 Devs | 83–100% | +5–12% |
+| **Naive Greedy Matcher** | Local First-Best Decision (Highest Match First) | ~1100–1500 | 5–8 Devs | 66–83% | Baseline |
+
+> **Why these are ranges, not fixed figures**: The comparison aggregates all pending proposals in the database, not just slots added in a single session. Running the same solver twice against different database states produces different absolute numbers. The *relative advantage* of CP-SAT over Greedy (consistently +5–12%) is the stable result.
 
 *Why Greedy Fails*: A naive greedy loop assigns the highest match to the first slot it evaluates, getting trapped in suboptimal local decisions that lock out developers from higher-value downstream project slots. CP-SAT explores the full combinatorial decision space and guarantees global optimality.
 
@@ -43,14 +45,15 @@ In benchmark comparisons against baseline matching algorithms on identical workf
 
 ## 🏗️ 3. Tech Stack & Architecture
 
-- **Backend Framework**: Python 3.13, Django 5.0, Django REST Framework (DRF)
+- **Backend Framework**: Python 3.13, Django 5.x (requires `>=5.0,<6.0`), Django REST Framework (DRF)
 - **Optimization Engines**:
   - **Google OR-Tools CP-SAT Solver** (`ortools.sat.python.cp_model`)
   - **SciPy Bipartite Matcher** (`scipy.optimize.linear_sum_assignment`)
   - **Naive Greedy Matcher** (Baseline Comparison)
 - **Frontend Interface**: Glassmorphic Dark Single-Page Dashboard (HTML5, Vanilla CSS3, JavaScript ES6, Chart.js)
 - **Database**: SQLite (Local Dev Default) & PostgreSQL (Production Docker Profile)
-- **Test Framework**: `pytest`, `pytest-django` (32 passing automated tests)
+- **API Security**: DRF global rate limiting (`AnonRateThrottle`: 60 req/min, `UserRateThrottle`: 200 req/min), conditional write-auth gating via `REQUIRE_AUTH_FOR_WRITES`
+- **Test Framework**: `pytest`, `pytest-django` (56 passing automated tests across 4 test modules)
 
 ### System Data Pipeline & Architecture
 
@@ -164,7 +167,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy environment variables template
+# Copy environment variables template (REQUIRED — see Auth section below)
 cp .env.example .env
 
 # Execute database migrations
@@ -187,26 +190,29 @@ Access the dashboard at `http://127.0.0.1:8000/` and Django Admin at `http://127
 pytest
 ```
 
-**Test Coverage Output (32 Passing Tests)**:
-- `tests/test_api.py`: REST API endpoints, headcount limits, allocation cancellation, expired proposal handling, bulk accept.
-- `tests/test_permissions_and_leave.py`: Auth toggle (`REQUIRE_AUTH_FOR_WRITES`), leave pending/approval/revocation workflow, staff permission checks.
-- `tests/test_solver.py`: CP-SAT optimization, weekly capacity model, leave availability, skill minimums, algorithm comparisons.
+**Test Coverage Output (56 Passing Tests)**:
+- `tests/test_api.py` (17 tests): REST API endpoints, headcount limits, allocation cancellation, expired proposal handling, bulk accept, advisory locking, bench trend.
+- `tests/test_permissions_and_leave.py` (14 tests): Auth toggle (`REQUIRE_AUTH_FOR_WRITES`), leave pending/approval/revocation workflow, staff permission checks.
+- `tests/test_solver.py` (13 tests): CP-SAT optimization, weekly capacity model, leave availability, skill minimums, algorithm comparisons.
+- `tests/test_upload.py` (12 tests): Bulk JSON/CSV developer and project file imports, validation errors, partial batch failure handling, file size and row count limits, re-upload idempotency.
 
 ---
 
-### 3. Authentication & Role Permissions Configuration
+### 3. Authentication & Seed Data
 
-By default, `.env.example` sets `REQUIRE_AUTH_FOR_WRITES=True` (secure default):
+> **⚠️ Security Notice:** `manage.py seed_data` creates a Django superuser `admin` with password `adminpassword` if one does not already exist. This account has full administrative access. **Change or delete this account immediately** if deploying to any non-local environment. The seed command is intended for local development and demos only.
 
-```bash
-# Create superuser / staff account for Project Managers
-python manage.py createsuperuser
-```
+> **⚠️ Default Auth Behavior:** `settings.py` defaults `REQUIRE_AUTH_FOR_WRITES` to `False` when no `.env` file is present, meaning all endpoints are open without authentication. The `.env.example` template sets it to `True`. **You must copy `.env.example` to `.env`** (the `cp .env.example .env` step in Quickstart) to activate write-auth gating. Skipping that step leaves every mutating endpoint publicly accessible.
 
-When `REQUIRE_AUTH_FOR_WRITES=True`:
+When `REQUIRE_AUTH_FOR_WRITES=True` (set in `.env`):
 - `GET` requests remain open for public dashboard viewing.
 - Mutating actions (creating/cancelling allocations, running solver optimization, bulk-accepting proposals, managing projects/slots, and approving leaves) are strictly gated to authenticated staff users (Project Managers / Admins).
 - For local zero-config interactive testing without login, set `REQUIRE_AUTH_FOR_WRITES=False` in `.env`.
+
+To create a custom admin account (recommended over using the seeded `admin`):
+```bash
+python manage.py createsuperuser
+```
 
 
 ---
@@ -227,6 +233,8 @@ docker-compose -f docker-compose.prod.yml up --build -d
 ```
 Runs production Gunicorn WSGI server (`DEBUG=False`, `REQUIRE_AUTH_FOR_WRITES=True`, WhiteNoise static asset serving, 90s worker timeout) with immutable container builds.
 
+> **Production checklist**: When `DEBUG=False`, `settings.py` raises `ImproperlyConfigured` if `REQUIRE_AUTH_FOR_WRITES` is not `True`, `SECRET_KEY` still contains the insecure default, or `ALLOWED_HOSTS` is unset. These are hard startup guards, not runtime warnings.
+
 ---
 
 ### 5. Multi-Process Optimization & Future Scale Roadmap
@@ -238,10 +246,7 @@ Runs production Gunicorn WSGI server (`DEBUG=False`, `REQUIRE_AUTH_FOR_WRITES=Tr
 2. **Async Task Queue (Celery / RQ)**:
    - For high-volume production beyond synchronous HTTP limits, solver runs can be offloaded to background task queues with task-level deduplication.
 
-3. **Rate Limiting & Throttling**:
-   - DRF `UserRateThrottle` and `ScopedRateThrottle` can be attached to administrative endpoints for additional protection against API spamming.
-
-4. **Bench Trend Daily Snapshot Table**:
+3. **Bench Trend Daily Snapshot Table**:
    - The `bench_trend` endpoint is computed dynamically ($O(\text{days} \times \text{allocations})$). For large enterprises (10,000+ staff), a nightly materialized daily-snapshot table can store pre-calculated availability metrics.
 
 
@@ -250,7 +255,7 @@ Runs production Gunicorn WSGI server (`DEBUG=False`, `REQUIRE_AUTH_FOR_WRITES=Tr
 ```
 BenchZero/
 ├── benchzero/              # Django Project Configuration
-│   ├── settings.py         # App Settings & REST Framework Auth Config
+│   ├── settings.py         # App Settings, REST Framework Auth & Throttling Config
 │   ├── urls.py             # Root URL Routing
 │   └── wsgi.py             # WSGI Entry Point
 ├── staffing/               # Main Application
@@ -268,13 +273,19 @@ BenchZero/
 │   │   ├── eligibility.py  # Hard Skill, Capacity & Leave Filters
 │   │   ├── fit_score.py    # Multi-Objective Dynamic Fit Score Calculator
 │   │   └── runner.py       # Optimization Engine Execution & Benchmark Manager
+│   ├── management/         # Django Management Commands
+│   │   └── commands/
+│   │       └── seed_data.py# Demo database seeder (creates admin/adminpassword superuser)
 │   ├── static/             # CSS & JS Dashboard Assets
 │   └── templates/          # Single-Page Dashboard (index.html)
-├── tests/                  # Automated Test Suite (32 pytest tests)
-│   ├── test_api.py
-│   ├── test_permissions_and_leave.py
-│   └── test_solver.py
-├── docker-compose.yml      # Docker Multi-Container Configuration
+├── tests/                  # Automated Test Suite (56 pytest tests)
+│   ├── test_api.py         # REST API endpoints & concurrency tests (17 tests)
+│   ├── test_permissions_and_leave.py  # Auth toggle & leave workflow (14 tests)
+│   ├── test_solver.py      # Optimization engine & constraint tests (13 tests)
+│   └── test_upload.py      # Bulk file import & validation tests (12 tests)
+├── scripts/                # Demo & utility scripts
+├── docker-compose.yml      # Docker Multi-Container Configuration (Dev)
+├── docker-compose.prod.yml # Docker Production Configuration
 ├── Dockerfile              # Container Build Instructions
 ├── manage.py               # Django Management Script
 ├── pytest.ini              # Pytest Test Runner Config
