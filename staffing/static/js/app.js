@@ -110,30 +110,85 @@ class BenchZeroApp {
         }
     }
 
-    showLoginModal() {
+    getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.content) return meta.content;
+        const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    showLoginModal(pendingAction = null, customMessage = null) {
+        if (pendingAction) {
+            this.pendingAction = pendingAction;
+        }
         const modal = document.getElementById('login-modal');
+        const errorEl = document.getElementById('login-modal-error');
+        if (errorEl) errorEl.style.display = 'none';
+
+        const subtitleEl = document.getElementById('login-modal-subtitle');
+        if (subtitleEl) {
+            subtitleEl.textContent = customMessage || 'Log in with staff credentials to unlock write actions (candidate assignments, proposals, solver runs).';
+        }
+
         if (modal) modal.style.display = 'flex';
+        const userInp = document.getElementById('login-username');
+        if (userInp) userInp.focus();
     }
 
     hideLoginModal() {
         const modal = document.getElementById('login-modal');
         if (modal) modal.style.display = 'none';
+        const errorEl = document.getElementById('login-modal-error');
+        if (errorEl) errorEl.style.display = 'none';
     }
 
     async loginUser(username, password) {
-        const { ok, data } = await this.safeFetchJson('/api/auth/login/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
+        const submitBtn = document.getElementById('btn-login-submit');
+        const errorEl = document.getElementById('login-modal-error');
+        const errorText = document.getElementById('login-modal-error-text');
 
-        if (ok) {
-            this.hideLoginModal();
-            this.showToast(`Logged in successfully as ${data.user.username}!`, 'success');
-            await this.fetchAuthStatus();
-            await this.loadAllData();
-        } else {
-            this.showToast(data?.error || 'Invalid credentials.', 'warning');
+        if (errorEl) errorEl.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Logging In...';
+        }
+
+        try {
+            const { ok, data } = await this.safeFetchJson('/api/auth/login/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (ok) {
+                this.hideLoginModal();
+                this.showToast(`Logged in successfully as ${data?.user?.username || username}!`, 'success');
+                await this.fetchAuthStatus();
+                await this.loadAllData();
+
+                // If user had clicked an action (e.g. Accept Proposal) before logging in, auto-execute it!
+                if (this.pendingAction && typeof this.pendingAction.callback === 'function') {
+                    const action = this.pendingAction;
+                    this.pendingAction = null;
+                    try {
+                        await action.callback();
+                    } catch (pendingErr) {
+                        console.error('Error executing pending action after login:', pendingErr);
+                    }
+                }
+            } else {
+                const errMsg = data?.error || data?.detail || 'Invalid username or password.';
+                if (errorEl && errorText) {
+                    errorText.textContent = errMsg;
+                    errorEl.style.display = 'block';
+                }
+                this.showToast(errMsg, 'warning');
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Log In';
+            }
         }
     }
 
@@ -146,7 +201,19 @@ class BenchZeroApp {
 
     async safeFetchJson(url, options = {}) {
         try {
-            const res = await fetch(url, options);
+            const opts = { ...options };
+            opts.headers = { ...(opts.headers || {}) };
+            const method = (opts.method || 'GET').toUpperCase();
+
+            // Auto-attach CSRF token for mutating requests
+            if (method !== 'GET' && method !== 'HEAD') {
+                const csrfToken = this.getCsrfToken();
+                if (csrfToken && !opts.headers['X-CSRFToken']) {
+                    opts.headers['X-CSRFToken'] = csrfToken;
+                }
+            }
+
+            const res = await fetch(url, opts);
             let data = null;
             const contentType = res.headers.get('content-type') || '';
             if (contentType.includes('application/json')) {
@@ -157,7 +224,9 @@ class BenchZeroApp {
             }
             
             if (res.status === 403 || res.status === 401) {
-                this.showLoginModal();
+                if (!url.includes('/api/auth/login')) {
+                    this.showLoginModal();
+                }
                 const rawMsg = data && (data.detail || data.error);
                 const msg = (rawMsg && !rawMsg.includes('Authentication credentials'))
                     ? rawMsg
@@ -171,6 +240,7 @@ class BenchZeroApp {
             return { ok: false, status: 0, data: { error: 'Network connection failed.' } };
         }
     }
+
 
     bindTabNavigation() {
         document.querySelectorAll('.nav-item').forEach(btn => {
@@ -1447,6 +1517,13 @@ class BenchZeroApp {
 
     async acceptProposal(id) {
         const { ok, status, data } = await this.safeFetchJson(`/api/proposals/${id}/accept/`, { method: 'POST' });
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.acceptProposal(id), name: `Accept Proposal #${id}` },
+                'Staff login required to accept candidate proposals. Please log in.'
+            );
+            return;
+        }
         if (status === 409) {
             this.showToast(`Conflict Warning: ${data?.error || 'Developer is already committed to an overlapping allocation.'}`, 'warning');
         } else if (ok) {
@@ -1466,7 +1543,7 @@ class BenchZeroApp {
             document.body.appendChild(container);
         }
 
-        // Item 7: Limit to max 5 visible toasts — dismiss oldest
+        // Limit to max 5 visible toasts — dismiss oldest
         const existing = container.querySelectorAll('.toast-item');
         if (existing.length >= 5) {
             existing[0].remove();
@@ -1540,69 +1617,87 @@ class BenchZeroApp {
         if (!endDate) endDate = new Date(Date.now() + 60*24*60*60*1000).toISOString().split('T')[0];
         if (!weeklyHours) weeklyHours = 40;
 
-        try {
-            const res = await fetch('/api/allocations/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    developer: devId,
-                    project_slot: slotId,
-                    start_date: startDate,
-                    end_date: endDate,
-                    allocated_hours: weeklyHours,
-                    status: 'confirmed'
-                })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                let errMsg = 'Failed to create assignment.';
-                if (typeof data === 'object') {
-                    const messages = [];
-                    for (const [k, v] of Object.entries(data)) {
-                        const valStr = Array.isArray(v) ? v.join(' ') : String(v);
-                        messages.push(`${k}: ${valStr}`);
-                    }
-                    if (messages.length > 0) errMsg = messages.join(' | ');
+        const { ok, status, data } = await this.safeFetchJson('/api/allocations/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                developer: devId,
+                project_slot: slotId,
+                start_date: startDate,
+                end_date: endDate,
+                allocated_hours: weeklyHours,
+                status: 'confirmed'
+            })
+        });
+
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.assignDeveloperToSlot(slotId, devId, startDate, endDate, weeklyHours), name: 'Assign Developer' },
+                'Staff login required to assign developers. Please log in.'
+            );
+            return;
+        }
+
+        if (!ok) {
+            let errMsg = data?.error || 'Failed to create assignment.';
+            if (typeof data === 'object' && !data?.error) {
+                const messages = [];
+                for (const [k, v] of Object.entries(data)) {
+                    const valStr = Array.isArray(v) ? v.join(' ') : String(v);
+                    messages.push(`${k}: ${valStr}`);
                 }
-                this.showToast(`Assignment Warning: ${errMsg}`, 'warning');
-            } else {
-                this.showToast('Developer assigned to project slot successfully!', 'success');
-                await this.loadAllData();
+                if (messages.length > 0) errMsg = messages.join(' | ');
             }
-        } catch (err) {
-            console.error('Failed to assign developer:', err);
-            this.showToast('Network or server error creating assignment.', 'warning');
+            this.showToast(`Assignment Warning: ${errMsg}`, 'warning');
+        } else {
+            this.showToast('Developer assigned to project slot successfully!', 'success');
+            await this.loadAllData();
         }
     }
 
     async rejectProposal(id) {
-        try {
-            await fetch(`/api/proposals/${id}/reject/`, { method: 'POST' });
+        const { ok, status, data } = await this.safeFetchJson(`/api/proposals/${id}/reject/`, { method: 'POST' });
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.rejectProposal(id), name: `Reject Proposal #${id}` },
+                'Staff login required to reject proposals. Please log in.'
+            );
+            return;
+        }
+        if (ok) {
             this.showToast('Proposal rejected.', 'info');
             await this.loadAllData();
-        } catch (err) {
-            console.error('Failed to reject proposal:', err);
-            this.showToast('Failed to reject proposal.', 'warning');
+        } else {
+            this.showToast(data?.error || 'Failed to reject proposal.', 'warning');
         }
     }
 
     async bulkAcceptProposals() {
         const proposedIds = this.proposals.filter(p => p.status === 'proposed').map(p => p.id);
-        if (proposedIds.length === 0) return;
+        if (proposedIds.length === 0) {
+            this.showToast('No pending proposals to accept.', 'info');
+            return;
+        }
 
-        try {
-            const res = await fetch('/api/proposals/bulk-accept/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ proposal_ids: proposedIds })
-            });
-            const data = await res.json();
-            if (data.conflicts_count > 0) {
-                alert(`Bulk Approval Result: Accepted ${data.accepted_count} proposals. ${data.conflicts_count} conflicting proposals were auto-rejected.`);
-            }
+        const { ok, status, data } = await this.safeFetchJson('/api/proposals/bulk-accept/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_ids: proposedIds })
+        });
+
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.bulkAcceptProposals(), name: 'Bulk Accept Proposals' },
+                'Staff login required for bulk proposal approval. Please log in.'
+            );
+            return;
+        }
+
+        if (ok && data) {
+            this.showToast(`Bulk Approval Result: Accepted ${data.accepted_count} proposals. ${data.conflicts_count || 0} conflicting proposals auto-rejected.`, 'success');
             await this.loadAllData();
-        } catch (err) {
-            console.error('Bulk accept failed:', err);
+        } else {
+            this.showToast(data?.error || 'Bulk accept failed.', 'warning');
         }
     }
 
@@ -1612,17 +1707,26 @@ class BenchZeroApp {
         const title = document.getElementById('dev-title').value;
         const cost = parseFloat(document.getElementById('dev-cost').value);
 
-        try {
-            await fetch('/api/developers/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email, title, hourly_cost: cost, max_weekly_hours: 40 })
-            });
+        const { ok, status, data } = await this.safeFetchJson('/api/developers/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, title, hourly_cost: cost, max_weekly_hours: 40 })
+        });
+
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.addDeveloper(), name: 'Add Developer' },
+                'Staff login required to add developers. Please log in.'
+            );
+            return;
+        }
+
+        if (ok) {
             document.getElementById('form-add-developer').reset();
+            this.showToast('Developer added successfully!', 'success');
             await this.loadAllData();
-            alert('Developer added successfully!');
-        } catch (err) {
-            console.error('Failed to add developer:', err);
+        } else {
+            this.showToast(data?.error || 'Failed to add developer.', 'warning');
         }
     }
 
@@ -1635,27 +1739,37 @@ class BenchZeroApp {
         const today = new Date().toISOString().split('T')[0];
         const nextMonth = new Date(Date.now() + 60*24*60*60*1000).toISOString().split('T')[0];
 
-        try {
-            await fetch('/api/slots/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    project: projectId,
-                    role_title: roleTitle,
-                    start_date: today,
-                    end_date: nextMonth,
-                    priority: priority,
-                    headcount_needed: headcount,
-                    weekly_hours_required: 40
-                })
-            });
+        const { ok, status, data } = await this.safeFetchJson('/api/slots/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project: projectId,
+                role_title: roleTitle,
+                start_date: today,
+                end_date: nextMonth,
+                priority: priority,
+                headcount_needed: headcount,
+                weekly_hours_required: 40
+            })
+        });
+
+        if (status === 401 || status === 403) {
+            this.showLoginModal(
+                { callback: () => this.addSlot(), name: 'Add Project Slot' },
+                'Staff login required to add project slots. Please log in.'
+            );
+            return;
+        }
+
+        if (ok) {
             document.getElementById('form-add-slot').reset();
+            this.showToast('Project slot added successfully!', 'success');
             await this.loadAllData();
-            alert('Project slot added successfully!');
-        } catch (err) {
-            console.error('Failed to add project slot:', err);
+        } else {
+            this.showToast(data?.error || 'Failed to add project slot.', 'warning');
         }
     }
+
 
     updateBadgeCount() {
         const pendingCount = this.proposals.filter(p => p.status === 'proposed').length;
@@ -1798,12 +1912,20 @@ class BenchZeroApp {
         if (btn) btn.disabled = true;
 
         try {
-            const response = await fetch('/api/developers/upload/', {
+            const { ok, status, data } = await this.safeFetchJson('/api/developers/upload/', {
                 method: 'POST',
                 body: formData
             });
 
-            const result = await response.json();
+            if (status === 401 || status === 403) {
+                this.showLoginModal(
+                    { callback: () => this.uploadDeveloperFile(), name: 'Upload Developer File' },
+                    'Staff login required to upload employee data. Please log in.'
+                );
+                return;
+            }
+
+            const result = data || {};
             this.renderUploadResults(result, 'Employee');
 
             if (result.success || result.imported_count > 0 || result.updated_count > 0) {
@@ -1834,12 +1956,20 @@ class BenchZeroApp {
         if (btn) btn.disabled = true;
 
         try {
-            const response = await fetch('/api/projects/upload/', {
+            const { ok, status, data } = await this.safeFetchJson('/api/projects/upload/', {
                 method: 'POST',
                 body: formData
             });
 
-            const result = await response.json();
+            if (status === 401 || status === 403) {
+                this.showLoginModal(
+                    { callback: () => this.uploadProjectFile(), name: 'Upload Project File' },
+                    'Staff login required to upload project data. Please log in.'
+                );
+                return;
+            }
+
+            const result = data || {};
             this.renderUploadResults(result, 'Project');
 
             if (result.success || result.imported_projects_count > 0 || result.imported_slots_count > 0) {
@@ -1860,6 +1990,7 @@ class BenchZeroApp {
         const container = document.getElementById('upload-results-box');
         if (container) container.style.display = 'none';
     }
+
 
     renderUploadResults(result, type) {
         const container = document.getElementById('upload-results-box');
@@ -2049,6 +2180,32 @@ class BenchZeroApp {
 
         const searchVal = (document.getElementById('role-search-input')?.value || '').toLowerCase().trim();
         const statusFilter = document.getElementById('role-status-filter')?.value || 'all';
+        const skillSelect = document.getElementById('role-skill-filter');
+        const skillFilter = (skillSelect?.value || 'all').toLowerCase().trim();
+
+        // Populate dynamic skills in skill dropdown if needed
+        if (skillSelect) {
+            const currentVal = skillSelect.value;
+            const uniqueSkills = new Set();
+            developers.forEach(d => {
+                (d.developer_skills || []).forEach(ds => {
+                    if (ds.skill_name) uniqueSkills.add(ds.skill_name);
+                });
+            });
+            // Ensure core skills are present
+            ['Python', 'Django', 'React', 'AWS', 'Kubernetes', 'Go', 'PyTorch', 'PostgreSQL', 'TypeScript', 'Node.js', 'Redis'].forEach(s => uniqueSkills.add(s));
+            
+            const sortedSkills = Array.from(uniqueSkills).sort();
+            const optionsHtml = ['<option value="all">All Skills</option>']
+                .concat(sortedSkills.map(s => `<option value="${s.toLowerCase()}" ${s.toLowerCase() === currentVal.toLowerCase() ? 'selected' : ''}>${s}</option>`))
+                .join('');
+            
+            if (skillSelect.dataset.populated !== sortedSkills.join(',')) {
+                skillSelect.innerHTML = optionsHtml;
+                skillSelect.dataset.populated = sortedSkills.join(',');
+                if (currentVal) skillSelect.value = currentVal;
+            }
+        }
 
         // Lookup of confirmed allocations by dev id
         const allocationByDev = {};
@@ -2062,29 +2219,13 @@ class BenchZeroApp {
             proposalByDev[p.developer] = p;
         });
 
-        // Group developers by title/role
-        const roleMap = {};
-        let totalWorking = 0;
-        let totalBench = 0;
-        let totalCostSum = 0;
-
-        developers.forEach(dev => {
+        // First pass: Build devItem models for all developers
+        const allDevItems = developers.map(dev => {
             const role = (dev.title || 'Senior Software Engineer').trim();
-            if (!roleMap[role]) {
-                roleMap[role] = {
-                    roleTitle: role,
-                    developers: [],
-                    workingCount: 0,
-                    benchCount: 0,
-                    totalCost: 0
-                };
-            }
-
             const devAllocations = allocations.filter(a => a.developer === dev.id);
             const confirmedAlloc = devAllocations.find(a => a.status === 'confirmed');
             const activeProp = proposalByDev[dev.id];
 
-            // Get past/completed allocations for bench developers
             const pastAllocations = devAllocations
                 .filter(a => a !== confirmedAlloc)
                 .sort((a, b) => new Date(b.end_date || '1970-01-01') - new Date(a.end_date || '1970-01-01'));
@@ -2104,8 +2245,6 @@ class BenchZeroApp {
                 startDate = confirmedAlloc.start_date;
                 endDate = confirmedAlloc.end_date;
                 weeklyHours = confirmedAlloc.allocated_hours;
-                totalWorking++;
-                roleMap[role].workingCount++;
             } else if (activeProp) {
                 devStatus = 'PROPOSED';
                 currentProject = activeProp.project_name;
@@ -2113,23 +2252,17 @@ class BenchZeroApp {
                 startDate = activeProp.start_date || 'Upcoming';
                 endDate = activeProp.end_date || 'TBD';
                 weeklyHours = 40;
-                totalWorking++;
-                roleMap[role].workingCount++;
             } else {
                 devStatus = 'BENCH';
-                totalBench++;
-                roleMap[role].benchCount++;
             }
 
             const cost = parseFloat(dev.hourly_cost || 0);
-            totalCostSum += cost;
-            roleMap[role].totalCost += cost;
 
-            const devItem = {
+            return {
                 id: dev.id,
                 name: dev.name,
                 email: dev.email,
-                title: dev.title,
+                title: role,
                 cost: cost,
                 maxHours: dev.max_weekly_hours,
                 status: devStatus,
@@ -2144,13 +2277,63 @@ class BenchZeroApp {
                     level: ds.proficiency_level
                 }))
             };
-
-            roleMap[role].developers.push(devItem);
         });
 
-        // Update KPI Stats Cards
-        const distinctRolesCount = Object.keys(roleMap).length;
-        const avgHourlyCost = developers.length > 0 ? (totalCostSum / developers.length).toFixed(2) : '0.00';
+        // Filter developers based on user search & filter
+        const filteredDevs = allDevItems.filter(d => {
+            const matchesSearch = !searchVal || 
+                d.name.toLowerCase().includes(searchVal) || 
+                d.email.toLowerCase().includes(searchVal) || 
+                d.title.toLowerCase().includes(searchVal) ||
+                (d.project && d.project.toLowerCase().includes(searchVal)) ||
+                (d.slotRole && d.slotRole.toLowerCase().includes(searchVal)) ||
+                (d.lastAllocation && d.lastAllocation.project_name.toLowerCase().includes(searchVal)) ||
+                d.skills.some(s => s.name.toLowerCase().includes(searchVal));
+
+            const matchesStatus = statusFilter === 'all' ||
+                (statusFilter === 'working' && (d.status === 'WORKING' || d.status === 'PROPOSED')) ||
+                (statusFilter === 'bench' && d.status === 'BENCH');
+
+            const matchesSkill = skillFilter === 'all' ||
+                d.skills.some(s => s.name.toLowerCase().includes(skillFilter));
+
+            return matchesSearch && matchesStatus && matchesSkill;
+        });
+
+        // Group filtered developers by role
+        const filteredRoleMap = {};
+        let filteredWorking = 0;
+        let filteredBench = 0;
+        let filteredCostSum = 0;
+
+        filteredDevs.forEach(d => {
+            const role = d.title;
+            if (!filteredRoleMap[role]) {
+                filteredRoleMap[role] = {
+                    roleTitle: role,
+                    developers: [],
+                    workingCount: 0,
+                    benchCount: 0,
+                    totalCost: 0
+                };
+            }
+            filteredRoleMap[role].developers.push(d);
+            filteredRoleMap[role].totalCost += d.cost;
+            filteredCostSum += d.cost;
+
+            if (d.status === 'WORKING' || d.status === 'PROPOSED') {
+                filteredWorking++;
+                filteredRoleMap[role].workingCount++;
+            } else {
+                filteredBench++;
+                filteredRoleMap[role].benchCount++;
+            }
+        });
+
+        // Update KPI Stats Cards based on filtered dataset
+        const isFiltered = searchVal !== '' || statusFilter !== 'all' || skillFilter !== 'all';
+        const distinctRolesCount = Object.keys(filteredRoleMap).length;
+        const avgHourlyCost = filteredDevs.length > 0 ? (filteredCostSum / filteredDevs.length).toFixed(2) : '0.00';
 
         const elTotalRoles = document.getElementById('role-stat-total-roles');
         const elWorkingDevs = document.getElementById('role-stat-working-devs');
@@ -2159,51 +2342,28 @@ class BenchZeroApp {
         const elGroupBadge = document.getElementById('role-groups-count-badge');
 
         if (elTotalRoles) elTotalRoles.textContent = distinctRolesCount;
-        if (elWorkingDevs) elWorkingDevs.textContent = totalWorking;
-        if (elBenchDevs) elBenchDevs.textContent = totalBench;
+        if (elWorkingDevs) elWorkingDevs.textContent = filteredWorking;
+        if (elBenchDevs) elBenchDevs.textContent = filteredBench;
         if (elAvgCost) elAvgCost.textContent = `$${avgHourlyCost}/hr`;
-        if (elGroupBadge) elGroupBadge.textContent = `${distinctRolesCount} Role Categories`;
+        if (elGroupBadge) elGroupBadge.textContent = `${distinctRolesCount} Role Categories${isFiltered ? ' (Filtered)' : ''}`;
 
-        // Render Chart
-        this.renderRoleDistributionChart(roleMap);
+        // Render Chart with filteredRoleMap and statusFilter
+        this.renderRoleDistributionChart(filteredRoleMap, statusFilter);
 
-        // Filter roleMap based on user search & filter
-        const skillFilter = (document.getElementById('role-skill-filter')?.value || 'all').toLowerCase();
-        let roleEntries = Object.values(roleMap);
-
-        if (roleEntries.length === 0) {
+        if (filteredDevs.length === 0) {
             container.innerHTML = `<div class="card" style="padding: 30px; text-align: center; color: var(--text-muted);">
-                <i class="fa-solid fa-users-slash" style="font-size: 28px; margin-bottom: 10px; display: block;"></i>
-                No developers found in database. Import employee data or add developers.
+                <i class="fa-solid fa-filter-circle-xmark" style="font-size: 28px; margin-bottom: 10px; display: block; color: var(--amber);"></i>
+                <strong>No developers match the active filters.</strong>
+                <p style="font-size: 12px; margin-top: 6px;">Try adjusting your search query, status dropdown, or skill filter.</p>
             </div>`;
             return;
         }
 
         let html = '';
-        roleEntries.forEach(group => {
-            const filteredDevs = group.developers.filter(d => {
-                const matchesSearch = !searchVal || 
-                    d.name.toLowerCase().includes(searchVal) || 
-                    d.email.toLowerCase().includes(searchVal) || 
-                    group.roleTitle.toLowerCase().includes(searchVal) ||
-                    (d.project && d.project.toLowerCase().includes(searchVal)) ||
-                    (d.lastAllocation && d.lastAllocation.project_name.toLowerCase().includes(searchVal));
-
-                const matchesStatus = statusFilter === 'all' ||
-                    (statusFilter === 'working' && (d.status === 'WORKING' || d.status === 'PROPOSED')) ||
-                    (statusFilter === 'bench' && d.status === 'BENCH');
-
-                const matchesSkill = skillFilter === 'all' ||
-                    d.skills.some(s => s.name.toLowerCase().includes(skillFilter));
-
-                return matchesSearch && matchesStatus && matchesSkill;
-            });
-
-            if (filteredDevs.length === 0) return;
-
+        Object.values(filteredRoleMap).forEach(group => {
             const avgRoleRate = (group.totalCost / group.developers.length).toFixed(2);
 
-            const devCardsHtml = filteredDevs.map(d => {
+            const devCardsHtml = group.developers.map(d => {
                 const isWorking = d.status === 'WORKING' || d.status === 'PROPOSED';
                 const statusBadge = d.status === 'WORKING'
                     ? `<span class="badge badge-emerald"><i class="fa-solid fa-briefcase"></i> ALLOCATED</span>`
@@ -2215,7 +2375,7 @@ class BenchZeroApp {
                     ? `
                         <div class="dev-project-tag working-tag">
                             <div class="flex-between margin-bottom-xs">
-                                <span><i class="fa-solid fa-folder-open" style="color: var(--emerald);"></i> <strong>${d.project}</strong> (${d.slotRole || 'Engineer'})</span>
+                                <span><i class="fa-solid fa-folder-open" style="color: var(--emerald);"></i> <strong>${escapeHtml(d.project)}</strong> (${escapeHtml(d.slotRole || 'Engineer')})</span>
                                 <span style="font-size: 11px; font-weight: 600; color: var(--emerald);">${d.hours}h/wk</span>
                             </div>
                             <div class="dev-timeline-info" style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 4px;">
@@ -2228,8 +2388,8 @@ class BenchZeroApp {
                         <div class="dev-project-tag bench-tag">
                             ${d.lastAllocation ? `
                                 <div class="flex-between margin-bottom-xs">
-                                    <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--amber);"></i> <strong>Previously Worked On:</strong> ${d.lastAllocation.project_name}</span>
-                                    <span style="font-size: 11px; color: var(--text-muted);">${d.lastAllocation.role_title}</span>
+                                    <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--amber);"></i> <strong>Previously Worked On:</strong> ${escapeHtml(d.lastAllocation.project_name)}</span>
+                                    <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(d.lastAllocation.role_title)}</span>
                                 </div>
                                 <div class="dev-timeline-info" style="font-size: 11px; color: var(--amber); display: flex; align-items: center; gap: 6px; margin-top: 4px;">
                                     <i class="fa-solid fa-calendar-check"></i>
@@ -2243,7 +2403,7 @@ class BenchZeroApp {
                     `;
 
                 const skillsHtml = d.skills.length > 0
-                    ? d.skills.map(s => `<span class="role-skill-chip">${s.name} <small>Lvl ${s.level}</small></span>`).join('')
+                    ? d.skills.map(s => `<span class="role-skill-chip">${escapeHtml(s.name)} <small>Lvl ${s.level}</small></span>`).join('')
                     : `<span style="font-size: 11px; color: var(--text-dim);">No skills listed</span>`;
 
                 return `
@@ -2254,8 +2414,8 @@ class BenchZeroApp {
                                     <i class="fa-solid fa-user"></i>
                                 </div>
                                 <div>
-                                    <h4 class="dev-name clickable-dev-name" onclick="app.showDeveloperModal(${d.id})" title="Click to view full developer profile">${d.name} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; color: var(--primary);"></i></h4>
-                                    <span class="dev-email"><i class="fa-solid fa-envelope"></i> ${d.email}</span>
+                                    <h4 class="dev-name clickable-dev-name" onclick="app.showDeveloperModal(${d.id})" title="Click to view full developer profile">${escapeHtml(d.name)} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; color: var(--primary);"></i></h4>
+                                    <span class="dev-email"><i class="fa-solid fa-envelope"></i> ${escapeHtml(d.email)}</span>
                                 </div>
                             </div>
                             <div style="text-align: right;">
@@ -2279,7 +2439,7 @@ class BenchZeroApp {
                     <div class="card-header flex-between flex-wrap gap-md">
                         <div class="role-group-title">
                             <i class="fa-solid fa-user-tag" style="color: var(--primary);"></i>
-                            <h3>${group.roleTitle}</h3>
+                            <h3>${escapeHtml(group.roleTitle)}</h3>
                             <span class="badge badge-solver">${group.developers.length} Developer${group.developers.length > 1 ? 's' : ''}</span>
                         </div>
                         <div class="role-group-summary-badges">
@@ -2297,13 +2457,10 @@ class BenchZeroApp {
             `;
         });
 
-        container.innerHTML = html || `<div class="card" style="padding: 30px; text-align: center; color: var(--text-muted);">
-            <i class="fa-solid fa-filter-circle-xmark" style="font-size: 28px; margin-bottom: 10px; display: block;"></i>
-            No developers match the active search and skill filters.
-        </div>`;
+        container.innerHTML = html;
     }
 
-    renderRoleDistributionChart(roleMap) {
+    renderRoleDistributionChart(roleMap, statusFilter = 'all') {
         const ctx = document.getElementById('roleDistributionChart');
         if (!ctx) return;
         if (typeof Chart === 'undefined') {
@@ -2311,30 +2468,65 @@ class BenchZeroApp {
             return;
         }
 
-        if (this.roleDistributionChartInstance) this.roleDistributionChartInstance.destroy();
+        if (this.roleDistributionChartInstance) {
+            this.roleDistributionChartInstance.destroy();
+            this.roleDistributionChartInstance = null;
+        }
 
         const labels = Object.keys(roleMap);
+        if (labels.length === 0) {
+            // Render an empty chart state
+            this.roleDistributionChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['No matching roles'],
+                    datasets: [{
+                        label: 'No Data',
+                        data: [0],
+                        backgroundColor: 'rgba(255,255,255,0.05)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+                        y: { beginAtZero: true, max: 1, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+            return;
+        }
+
         const workingData = labels.map(r => roleMap[r].workingCount);
         const benchData = labels.map(r => roleMap[r].benchCount);
+
+        const datasets = [];
+        if (statusFilter === 'all' || statusFilter === 'working') {
+            datasets.push({
+                label: 'Working / Staffed',
+                data: workingData,
+                backgroundColor: '#10b981',
+                borderRadius: 4
+            });
+        }
+        if (statusFilter === 'all' || statusFilter === 'bench') {
+            datasets.push({
+                label: 'On Bench',
+                data: benchData,
+                backgroundColor: '#f59e0b',
+                borderRadius: 4
+            });
+        }
 
         this.roleDistributionChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
-                datasets: [
-                    {
-                        label: 'Working / Staffed',
-                        data: workingData,
-                        backgroundColor: '#10b981',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'On Bench',
-                        data: benchData,
-                        backgroundColor: '#f59e0b',
-                        borderRadius: 4
-                    }
-                ]
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -2342,7 +2534,12 @@ class BenchZeroApp {
                 scales: {
                     x: {
                         stacked: true,
-                        ticks: { color: '#9ca3af', font: { size: 11 } },
+                        ticks: {
+                            color: '#9ca3af',
+                            font: { size: 11 },
+                            maxRotation: 45,
+                            minRotation: 20
+                        },
                         grid: { display: false }
                     },
                     y: {
@@ -2356,11 +2553,16 @@ class BenchZeroApp {
                     legend: {
                         position: 'top',
                         labels: { color: '#9ca3af', boxWidth: 12, padding: 12 }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
                     }
                 }
             }
         });
     }
+
 
     // ===== Item 10: Developer Profile Detail Modal =====
     showDeveloperModal(devId) {

@@ -5,8 +5,9 @@
 ![Python Version](https://img.shields.io/badge/python-3.13-blue.svg)
 ![Django Version](https://img.shields.io/badge/django-5.x-green.svg)
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-CP--SAT-orange.svg)
-![Pytest](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)
+![Pytest](https://img.shields.io/badge/tests-57%20passed-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
+
 
 ---
 
@@ -53,7 +54,8 @@ The three solver engines (CP-SAT, SciPy Hungarian, Greedy) are compared on every
 - **Frontend Interface**: Glassmorphic Dark Single-Page Dashboard (HTML5, Vanilla CSS3, JavaScript ES6, Chart.js)
 - **Database**: SQLite (Local Dev Default) & PostgreSQL (Production Docker Profile)
 - **API Security**: DRF global rate limiting (`AnonRateThrottle`: 60 req/min, `UserRateThrottle`: 200 req/min), conditional write-auth gating via `REQUIRE_AUTH_FOR_WRITES`
-- **Test Framework**: `pytest`, `pytest-django` (56 passing automated tests across 4 test modules)
+- **Test Framework**: `pytest`, `pytest-django` (57 passing automated tests across 4 test modules)
+
 
 ### System Data Pipeline & Architecture
 
@@ -190,13 +192,14 @@ Access the dashboard at `http://127.0.0.1:8000/` and Django Admin at `http://127
 pytest
 ```
 
-**Test Coverage Output (56 Passing Tests)**:
+**Test Coverage Output (57 Passing Tests)**:
 - `tests/test_api.py` (17 tests): REST API endpoints, headcount limits, allocation cancellation, expired proposal handling, bulk accept, advisory locking, bench trend.
-- `tests/test_permissions_and_leave.py` (14 tests): Auth toggle (`REQUIRE_AUTH_FOR_WRITES`), leave pending/approval/revocation workflow, staff permission checks.
+- `tests/test_permissions_and_leave.py` (15 tests): Auth toggle (`REQUIRE_AUTH_FOR_WRITES`), login/logout endpoints, leave pending/approval/revocation workflow, staff permission checks.
 - `tests/test_solver.py` (13 tests): CP-SAT optimization, weekly capacity model, leave availability, skill minimums, algorithm comparisons.
 - `tests/test_upload.py` (12 tests): Bulk JSON/CSV developer and project file imports, validation errors, partial batch failure handling, file size and row count limits, re-upload idempotency.
 
 ---
+
 
 ### 3. Authentication & Seed Data
 
@@ -278,11 +281,12 @@ BenchZero/
 │   │       └── seed_data.py# Demo database seeder (creates admin/adminpassword superuser)
 │   ├── static/             # CSS & JS Dashboard Assets
 │   └── templates/          # Single-Page Dashboard (index.html)
-├── tests/                  # Automated Test Suite (56 pytest tests)
+├── tests/                  # Automated Test Suite (57 pytest tests)
 │   ├── test_api.py         # REST API endpoints & concurrency tests (17 tests)
-│   ├── test_permissions_and_leave.py  # Auth toggle & leave workflow (14 tests)
+│   ├── test_permissions_and_leave.py  # Auth toggle & leave workflow (15 tests)
 │   ├── test_solver.py      # Optimization engine & constraint tests (13 tests)
 │   └── test_upload.py      # Bulk file import & validation tests (12 tests)
+
 ├── scripts/                # Demo & utility scripts
 ├── docker-compose.yml      # Docker Multi-Container Configuration (Dev)
 ├── docker-compose.prod.yml # Docker Production Configuration

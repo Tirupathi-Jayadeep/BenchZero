@@ -154,3 +154,28 @@ class TestLeaveApprovalWorkflow(TestCase):
         res = self.client.post(f'/api/leaves/{leave.id}/approve/')
         assert res.status_code == 200
         User.objects.filter(username__in=['regular', 'staff']).delete()
+
+    def test_auth_login_and_logout_endpoints(self):
+        User.objects.filter(username='logintestuser').delete()
+        user = User.objects.create_user('logintestuser', password='securepassword123', is_staff=True)
+        
+        # Test valid login
+        res = self.client.post('/api/auth/login/', {'username': 'logintestuser', 'password': 'securepassword123'}, format='json')
+        assert res.status_code == 200
+        assert res.data['user']['username'] == 'logintestuser'
+        assert res.data['user']['is_staff'] is True
+
+        # Test auth status
+        status_res = self.client.get('/api/auth/status/')
+        assert status_res.status_code == 200
+
+        # Test logout
+        logout_res = self.client.post('/api/auth/logout/')
+        assert logout_res.status_code == 200
+
+        # Test invalid credentials
+        bad_res = self.client.post('/api/auth/login/', {'username': 'logintestuser', 'password': 'wrongpassword'}, format='json')
+        assert bad_res.status_code == 401
+        
+        User.objects.filter(username='logintestuser').delete()
+

@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>BenchZero — Operations Dispatch Board</title>
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9A%A1</text></svg>" type="image/svg+xml">
     
     <!-- Google Fonts: Monospace for numbers/status, Condensed Grotesque for manifest headers -->
@@ -926,9 +928,12 @@ Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,
                 <button type="button" class="btn-close-modal" onclick="app.hideLoginModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body">
-                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                <p id="login-modal-subtitle" style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
                     Log in with staff credentials to unlock write actions (candidate assignments, proposals, solver runs).
                 </p>
+                <div id="login-modal-error" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--rose); color: var(--rose); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px;">
+                    <i class="fa-solid fa-circle-exclamation"></i> <span id="login-modal-error-text">Invalid username or password.</span>
+                </div>
                 <div class="demo-credentials-hint" style="background: rgba(240, 162, 2, 0.1); border: 1px solid var(--amber); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: var(--text-main);">
                     <i class="fa-solid fa-key" style="color: var(--amber);"></i> <strong>Demo Credentials:</strong><br>
                     Username: <code style="color: var(--amber);">admin</code> | Password: <code style="color: var(--amber);">adminpassword</code>
@@ -944,7 +949,7 @@ Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,
                     </div>
                     <div style="display: flex; gap: 10px; justify-content: flex-end;">
                         <button type="button" class="btn btn-outline" onclick="app.hideLoginModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-right-to-bracket"></i> Log In</button>
+                        <button type="submit" id="btn-login-submit" class="btn btn-primary"><i class="fa-solid fa-right-to-bracket"></i> Log In</button>
                     </div>
                 </form>
             </div>
@@ -952,7 +957,8 @@ Titan Cloud,Titan Tech,5,200000,Cloud migration,Lead Cloud Architect,2026-08-01,
     </div>
 
     {% load static %}
-    <script src="{% static 'js/app.js' %}?v=7.0"></script>
+    <script src="{% static 'js/app.js' %}?v=8.0"></script>
+
     <script>
         // Item 4: Sidebar collapse toggle
         document.getElementById('sidebar-toggle')?.addEventListener('click', () => {

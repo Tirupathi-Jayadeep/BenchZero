@@ -89,6 +89,8 @@ def _parse_slot_skills_string(skills_str):
 
 
 from django.contrib.auth import authenticate, login as django_login, logout as django_logout
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 
 
@@ -104,7 +106,9 @@ class AuthStatusView(APIView):
         })
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -128,7 +132,9 @@ class LoginView(APIView):
             return Response({'error': 'Invalid username or password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -136,8 +142,10 @@ class LogoutView(APIView):
         return Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
 
 
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 class DashboardView(TemplateView):
     template_name = 'index.html'
+
 
 
 class SkillViewSet(viewsets.ModelViewSet):
